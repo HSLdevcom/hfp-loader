@@ -1,9 +1,11 @@
 import { finished, Transform } from 'stream'
 import { logTime } from './utils/logTime'
 import { EventGroup, HfpRow } from './hfp'
-import { createJourneyBlobStreamer, getHfpBlobs } from './hfpStorage'
+import { createJourneyBlobStreamer, createSpecificEventKey, getHfpBlobs } from './hfpStorage'
 import PQueue from 'p-queue'
 import { upsert } from './upsert'
+import { getKnex } from './knex'
+import { logMaxTimes } from './utils/logMaxTimes'
 
 let eventGroupTables = {
   [EventGroup.StopEvent]: 'stopevent',
@@ -12,12 +14,15 @@ let eventGroupTables = {
   [EventGroup.UnsignedEvent]: 'unsignedevent',
 }
 
+const BATCH_SIZE = 5000
+
 export async function hfpTask(date: string) {
   let time = process.hrtime()
+  let knex = await getKnex()
 
-  async function insertEvents(events: HfpRow[], eventGroup: EventGroup) {
+  function insertEvents(events: HfpRow[], eventGroup: EventGroup) {
     let table = eventGroupTables[eventGroup]
-    await upsert(table, events)
+    return upsert(table, events)
   }
 
   let insertQueue = new PQueue({
@@ -32,15 +37,43 @@ export async function hfpTask(date: string) {
   })
 
   let getJourneyBlobStream = await createJourneyBlobStreamer()
-  let eventGroups = Object.keys(eventGroupTables)
 
-  for (let eventGroupName of eventGroups) {
-    let eventGroup = EventGroup[eventGroupName]
+  let eventGroups = [
+    EventGroup.StopEvent,
+    EventGroup.UnsignedEvent,
+    EventGroup.VehiclePosition,
+    EventGroup.OtherEvent,
+  ]
+
+  for (let eventGroup of eventGroups) {
     let groupBlobs = await getHfpBlobs(date, eventGroup)
+    console.log(eventGroup)
 
     if (groupBlobs.length === 0) {
       continue
     }
+
+    console.log(`Loading existing events for ${eventGroup}`)
+
+    // The HFP tables do not have primary keys, so we must filter out events that already
+    // exist in the table. Fetch the existing events for the date to facilitate this.
+    let table = eventGroupTables[eventGroup]
+    // language=PostgreSQL
+    let existingEvents =
+      (
+        await knex.raw(
+          `
+      SELECT *
+      FROM :table: t
+      WHERE t.oday = :date
+    `,
+          { table, date }
+        )
+      )?.rows || []
+
+    console.log(existingEvents.slice(0, 3))
+
+    let existingKeys = existingEvents.map(createSpecificEventKey)
 
     for (let blobName of groupBlobs) {
       let blobTask = () =>
@@ -79,6 +112,18 @@ export async function hfpTask(date: string) {
                 (eventGroup === EventGroup.UnsignedEvent && data.journey_type !== 'unsigned') ||
                 (eventGroup === EventGroup.VehiclePosition && data.journey_type !== 'journey')
               ) {
+                logMaxTimes(
+                  'Invalid VP event skipped',
+                  `Invalid ${data.journey_type} event for ${eventGroups} skipped.`,
+                  10
+                )
+                return callback(null)
+              }
+
+              let eventKey = createSpecificEventKey(data)
+
+              if (existingKeys.includes(eventKey)) {
+                logMaxTimes('Event skipped', `Existing event ${eventKey} skipped.`, 10)
                 return callback(null)
               }
 
@@ -86,7 +131,7 @@ export async function hfpTask(date: string) {
 
               let eventsLength = events.length
 
-              if (eventsLength >= 1000) {
+              if (eventsLength >= BATCH_SIZE) {
                 insertQueue
                   .add(() => insertEvents(events, eventGroup))
                   .then(() => console.log(`Inserted ${eventsLength} events for ${blobName}`))

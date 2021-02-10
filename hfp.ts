@@ -21,11 +21,11 @@ export interface HfpRow {
   mode: string | null
   next_stop_id: string | null
   occu: string | null
-  oday: string | null
+  oday: Date | null
   odo: string | null
   oper: string | null
   owner_operator_id: string | null
-  received_at: string | null
+  received_at: Date | null
   route_id: string | null
   route: string | null
   seq: string | null
@@ -37,7 +37,7 @@ export interface HfpRow {
   topic_prefix: string | null
   topic_version: string | null
   tsi: string | null
-  tst: string | null
+  tst: Date | null
   unique_vehicle_id: string | null
   uuid: string | null
   veh: string | null

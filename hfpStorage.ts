@@ -17,16 +17,25 @@ let eventTypePrefixes = {
 }
 
 export function createSpecificEventKey(item: HfpRow) {
-  return `${item.event_type}_${item.journey_type}_${item.route_id}_${item.direction_id}_${
-    item.journey_start_time
-  }_${format(new Date(parseInt(item.oday!, 10)), 'yyyy-MM-dd')}_${item.unique_vehicle_id}_${
-    item.tst
-  }_${item.lat}_${item.long}`
+  let oday: string | null
+
+  if (item.oday instanceof Date) {
+    try {
+      oday = format(item.oday, 'yyyy-MM-dd')
+    } catch (err) {
+      oday = null
+    }
+  } else {
+    oday = item.oday || null
+  }
+
+  return `${item.event_type}_${item.journey_type}_${item.route_id}_${item.direction_id}_${item.journey_start_time}_${oday}_${item.unique_vehicle_id}_${item.tst}_${item.lat}_${item.long}`
 }
 
 export async function getHfpBlobs(date: string, eventGroup: EventGroup) {
   let container = await getContainer(hfpContainerName)
-  let hfpBlobs = await listBlobs(container, eventTypePrefixes[eventGroup] + date)
+  let prefix = eventTypePrefixes[eventGroup] + date
+  let hfpBlobs = await listBlobs(container, prefix)
 
   if (hfpBlobs.length === 0) {
     return []

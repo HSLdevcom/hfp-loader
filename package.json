@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "start": "ts-node-dev --max-old-space-size=4096 --no-notify --respawn --inspect -r dotenv/config index.ts"
+    "start": "node --max-old-space-size=16000 --inspect=9301 -r ts-node/register -r dotenv/config index.ts"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.4.1",
@@ -9,6 +9,8 @@
     "dotenv": "^8.2.0",
     "knex": "^0.21.17",
     "p-queue": "^6.6.2",
+    "pg": "^8.5.1",
+    "ts-node": "^9.1.1",
     "typescript": "^4.1.4"
   },
   "devDependencies": {
