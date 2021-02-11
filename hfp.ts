@@ -51,3 +51,10 @@ export enum EventGroup {
   VehiclePosition = 'vehiclePosition',
   UnsignedEvent = 'vehiclePosition',
 }
+
+export const eventGroupTables = {
+  [EventGroup.StopEvent]: 'stopevent',
+  [EventGroup.OtherEvent]: 'otherevent',
+  [EventGroup.VehiclePosition]: 'vehicleposition',
+  [EventGroup.UnsignedEvent]: 'unsignedevent',
+}

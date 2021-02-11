@@ -1,24 +1,16 @@
 import { finished, Transform } from 'stream'
 import { logTime } from './utils/logTime'
-import { EventGroup, HfpRow } from './hfp'
+import { EventGroup, eventGroupTables, HfpRow } from './hfp'
 import { createJourneyBlobStreamer, createSpecificEventKey, getHfpBlobs } from './hfpStorage'
 import PQueue from 'p-queue'
 import { upsert } from './upsert'
-import { getKnex } from './knex'
 import { logMaxTimes } from './utils/logMaxTimes'
-
-let eventGroupTables = {
-  [EventGroup.StopEvent]: 'stopevent',
-  [EventGroup.OtherEvent]: 'otherevent',
-  [EventGroup.VehiclePosition]: 'vehicleposition',
-  [EventGroup.UnsignedEvent]: 'unsignedevent',
-}
+import { getEvents } from './getEvents'
 
 const BATCH_SIZE = 5000
 
 export async function hfpTask(date: string) {
   let time = process.hrtime()
-  let knex = await getKnex()
 
   function insertEvents(events: HfpRow[], eventGroup: EventGroup) {
     let table = eventGroupTables[eventGroup]
@@ -55,24 +47,7 @@ export async function hfpTask(date: string) {
 
     console.log(`Loading existing events for ${eventGroup}`)
 
-    // The HFP tables do not have primary keys, so we must filter out events that already
-    // exist in the table. Fetch the existing events for the date to facilitate this.
-    let table = eventGroupTables[eventGroup]
-    // language=PostgreSQL
-    let existingEvents =
-      (
-        await knex.raw(
-          `
-      SELECT *
-      FROM :table: t
-      WHERE t.oday = :date
-    `,
-          { table, date }
-        )
-      )?.rows || []
-
-    console.log(existingEvents.slice(0, 3))
-
+    let existingEvents = await getEvents(date, eventGroup)
     let existingKeys = existingEvents.map(createSpecificEventKey)
 
     for (let blobName of groupBlobs) {
