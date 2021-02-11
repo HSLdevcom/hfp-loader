@@ -9,20 +9,13 @@ import { getEvents } from './getEvents'
 import parse from 'csv-parse'
 import { getCsvParseOptions } from './parseCsv'
 import { hfpColumns } from './hfpColumns'
+import { getKnex } from './knex'
 
 const BATCH_SIZE = 5000
 
 export async function hfpTask(date: string) {
   let time = process.hrtime()
-
-  function insertEvents(events: HfpRow[], eventGroup: EventGroup) {
-    let table = eventGroupTables[eventGroup]
-    return upsert(table, events)
-  }
-
-  let insertQueue = new PQueue({
-    concurrency: 100,
-  })
+  let knex = getKnex()
 
   const BLOB_CONCURRENCY = 10
 
@@ -41,6 +34,7 @@ export async function hfpTask(date: string) {
   ]
 
   for (let eventGroup of eventGroups) {
+    let eventGroupTime = process.hrtime()
     let groupBlobs = await getHfpBlobs(date, eventGroup)
     console.log(eventGroup)
 
@@ -48,10 +42,14 @@ export async function hfpTask(date: string) {
       continue
     }
 
+    let table = eventGroupTables[eventGroup]
+
     console.log(`Loading existing events for ${eventGroup}`)
 
-    let existingEvents = await getEvents(date, eventGroup)
+    let existingEvents = await getEvents(date, table)
     let existingKeys = existingEvents.map(createSpecificEventKey)
+
+    logTime(`Existing events loaded for ${eventGroup}`, eventGroupTime)
 
     for (let blobName of groupBlobs) {
       let blobTask = () =>
@@ -59,23 +57,47 @@ export async function hfpTask(date: string) {
           let blobTime = process.hrtime()
           console.log(`Processing blob ${blobName}`)
 
+          let trx = await knex.transaction()
+
+          let insertQueue = new PQueue({
+            concurrency: 10,
+          })
+
+          // Call when the blob is done. Finishes the queued inserts and closes the transaction.
+          async function onBlobDone(err?: any) {
+            if (err) {
+              console.error(err)
+              insertQueue.clear()
+              return reject(trx.rollback(err))
+            }
+
+            await insertQueue.onIdle()
+
+            if (!trx.isCompleted()) {
+              await trx.commit()
+            }
+
+            return resolve(blobName)
+          }
+
           let eventStream = await getJourneyBlobStream(blobName)
 
           if (!eventStream) {
             console.log(`No data found for blob ${blobName}`)
-            return resolve(blobName)
+            return onBlobDone()
           }
 
           let events: HfpRow[] = []
 
-          function insertEventsIfBatchIsFull(flush: boolean = false) {
+          async function insertEventsIfBatchIsFull(flush: boolean = false) {
             let eventsLength = events.length
             let shouldInsertBatch = flush ? eventsLength !== 0 : eventsLength >= BATCH_SIZE
 
             if (shouldInsertBatch) {
               insertQueue
-                .add(() => insertEvents(events, eventGroup))
+                .add(() => upsert(trx, table, events))
                 .then(() => console.log(`Inserted ${eventsLength} events for ${blobName}`))
+                .catch(onBlobDone) // Rollback if error
 
               events = []
             }
@@ -107,7 +129,6 @@ export async function hfpTask(date: string) {
 
               if (!existingKeys.includes(eventKey)) {
                 events.push(data)
-
                 insertEventsIfBatchIsFull(false)
               }
 
@@ -116,12 +137,9 @@ export async function hfpTask(date: string) {
           })
 
           pipeline(eventStream, parse(getCsvParseOptions(hfpColumns)), insertStream, (err) => {
-            if (err) {
-              reject(err)
-            } else {
+            onBlobDone(err).then(() => {
               logTime(`Event stream ended for blob ${blobName}`, blobTime)
-              resolve(blobName)
-            }
+            })
           })
         })
 
@@ -132,7 +150,6 @@ export async function hfpTask(date: string) {
   }
 
   await blobQueue.onIdle()
-  await insertQueue.onIdle()
 
   logTime(`HFP loading task completed`, time)
 }

@@ -1,6 +1,6 @@
 import { getBlobDownloadStream, getContainer, listBlobs } from './azureStorage'
 import { EventGroup, HfpRow } from './hfp'
-import { format } from 'date-fns'
+import { format, formatISO } from 'date-fns'
 
 let hfpContainerName = 'hfp-v2'
 let blobsPrefix = 'csv/'
@@ -13,19 +13,37 @@ let eventTypePrefixes = {
 }
 
 export function createSpecificEventKey(item: HfpRow) {
-  let oday: string | null
+  let oday: any = item.oday
+  let tst: any = item.tst
 
-  if (item.oday instanceof Date) {
+  if (oday instanceof Date) {
     try {
-      oday = format(item.oday, 'yyyy-MM-dd')
+      oday = format(item.oday!, 'yyyy-MM-dd')
     } catch (err) {
       oday = null
     }
-  } else {
-    oday = item.oday || null
   }
 
-  return `${item.event_type}_${item.journey_type}_${item.route_id}_${item.direction_id}_${item.journey_start_time}_${oday}_${item.unique_vehicle_id}_${item.tst}_${item.lat}_${item.long}`
+  if (tst instanceof Date) {
+    try {
+      tst = formatISO(item.tst!)
+    } catch (err) {
+      tst = null
+    }
+  }
+
+  return [
+    item.event_type,
+    item.journey_type,
+    item.route_id,
+    item.direction_id,
+    item.journey_start_time,
+    oday,
+    item.unique_vehicle_id,
+    tst,
+    item.lat,
+    item.long,
+  ].join('_')
 }
 
 export async function getHfpBlobs(date: string, eventGroup: EventGroup) {

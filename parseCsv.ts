@@ -31,7 +31,7 @@ export async function parseCsvStream<TData>(
       }
     })
 
-    parser.on('error', err => {
+    parser.on('error', (err) => {
       reject(err)
     })
 
@@ -44,12 +44,7 @@ export async function parseCsvStream<TData>(
   })
 }
 
-export function parseCsvStreamIntoStream(
-  stream,
-  columns,
-  delimiter = ',',
-  startFromLine = 1
-) {
+export function parseCsvStreamIntoStream(stream, columns, delimiter = ',', startFromLine = 1) {
   const parser = parse(getCsvParseOptions(columns, delimiter, startFromLine))
   return stream.pipe(parser)
 }

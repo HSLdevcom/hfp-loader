@@ -13,7 +13,8 @@ export function getKnex(): Knex {
     connection: PG_CONNECTION,
     pool: {
       min: 0,
-      max: 50,
+      max: 300,
+      acquireTimeoutMillis: 1000 * 60 * 60,
     },
   })
 
