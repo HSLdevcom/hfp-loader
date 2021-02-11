@@ -10,6 +10,7 @@ import parse from 'csv-parse'
 import { getCsvParseOptions } from './parseCsv'
 import { hfpColumns } from './hfpColumns'
 import { getKnex } from './knex'
+import { transformHfpItem } from './transformHfpItem'
 
 const BATCH_SIZE = 5000
 
@@ -68,6 +69,8 @@ export async function hfpTask(date: string) {
             if (err) {
               console.error(err)
               insertQueue.clear()
+
+              logTime(`Event stream ERROR for blob ${blobName}`, blobTime)
               return reject(trx.rollback(err))
             }
 
@@ -77,6 +80,7 @@ export async function hfpTask(date: string) {
               await trx.commit()
             }
 
+            logTime(`Event stream ended for blob ${blobName}`, blobTime)
             return resolve(blobName)
           }
 
@@ -94,6 +98,8 @@ export async function hfpTask(date: string) {
             let shouldInsertBatch = flush ? eventsLength !== 0 : eventsLength >= BATCH_SIZE
 
             if (shouldInsertBatch) {
+              logMaxTimes(`Inserting rows for ${blobName}`, events.length, 10)
+
               insertQueue
                 .add(() => upsert(trx, table, events))
                 .then(() => console.log(`Inserted ${eventsLength} events for ${blobName}`))
@@ -125,10 +131,12 @@ export async function hfpTask(date: string) {
                 return callback(null)
               }
 
-              let eventKey = createSpecificEventKey(data)
+              let dataItem = transformHfpItem(data)
+              let eventKey = createSpecificEventKey(dataItem)
 
               if (!existingKeys.includes(eventKey)) {
-                events.push(data)
+                logMaxTimes(`Received new event from blob ${blobName}`, eventKey, 10)
+                events.push(dataItem)
                 insertEventsIfBatchIsFull(false)
               }
 
@@ -137,9 +145,7 @@ export async function hfpTask(date: string) {
           })
 
           pipeline(eventStream, parse(getCsvParseOptions(hfpColumns)), insertStream, (err) => {
-            onBlobDone(err).then(() => {
-              logTime(`Event stream ended for blob ${blobName}`, blobTime)
-            })
+            onBlobDone(err)
           })
         })
 

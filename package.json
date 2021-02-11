@@ -4,10 +4,12 @@
   },
   "dependencies": {
     "@azure/storage-blob": "^12.4.1",
+    "@types/lodash": "^4.14.168",
     "csv-parse": "^4.15.1",
     "date-fns": "^2.17.0",
     "dotenv": "^8.2.0",
     "knex": "^0.21.17",
+    "lodash": "^4.17.20",
     "p-queue": "^6.6.2",
     "pg": "^8.5.1",
     "ts-node": "^9.1.1",

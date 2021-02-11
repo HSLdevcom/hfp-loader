@@ -1,6 +1,6 @@
 import { getBlobDownloadStream, getContainer, listBlobs } from './azureStorage'
 import { EventGroup, HfpRow } from './hfp'
-import { format, formatISO } from 'date-fns'
+import { format, formatISO, parseISO } from 'date-fns'
 
 let hfpContainerName = 'hfp-v2'
 let blobsPrefix = 'csv/'
@@ -22,6 +22,16 @@ export function createSpecificEventKey(item: HfpRow) {
     } catch (err) {
       oday = null
     }
+  } else if (typeof oday === 'string') {
+    let odayDate: Date
+
+    if (oday.indexOf('-') !== -1) {
+      odayDate = parseISO(oday)
+    } else {
+      odayDate = new Date(parseInt(oday, 10))
+    }
+
+    oday = format(odayDate, 'yyyy-MM-dd')
   }
 
   if (tst instanceof Date) {
