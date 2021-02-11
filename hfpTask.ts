@@ -1,4 +1,4 @@
-import { finished, Transform } from 'stream'
+import { pipeline, Transform } from 'stream'
 import { logTime } from './utils/logTime'
 import { EventGroup, eventGroupTables, HfpRow } from './hfp'
 import { createJourneyBlobStreamer, createSpecificEventKey, getHfpBlobs } from './hfpStorage'
@@ -6,6 +6,9 @@ import PQueue from 'p-queue'
 import { upsert } from './upsert'
 import { logMaxTimes } from './utils/logMaxTimes'
 import { getEvents } from './getEvents'
+import parse from 'csv-parse'
+import { getCsvParseOptions } from './parseCsv'
+import { hfpColumns } from './hfpColumns'
 
 const BATCH_SIZE = 5000
 
@@ -18,10 +21,10 @@ export async function hfpTask(date: string) {
   }
 
   let insertQueue = new PQueue({
-    concurrency: 500,
+    concurrency: 100,
   })
 
-  const BLOB_CONCURRENCY = 100
+  const BLOB_CONCURRENCY = 10
 
   let blobQueue = new PQueue({
     concurrency: BLOB_CONCURRENCY,
@@ -65,18 +68,23 @@ export async function hfpTask(date: string) {
 
           let events: HfpRow[] = []
 
+          function insertEventsIfBatchIsFull(flush: boolean = false) {
+            let eventsLength = events.length
+            let shouldInsertBatch = flush ? eventsLength !== 0 : eventsLength >= BATCH_SIZE
+
+            if (shouldInsertBatch) {
+              insertQueue
+                .add(() => insertEvents(events, eventGroup))
+                .then(() => console.log(`Inserted ${eventsLength} events for ${blobName}`))
+
+              events = []
+            }
+          }
+
           let insertStream = new Transform({
             objectMode: true,
             flush(callback) {
-              let eventsLength = events.length
-
-              if (eventsLength !== 0) {
-                insertQueue
-                  .add(async () => insertEvents(events, eventGroup))
-                  .then(() => console.log(`Inserted ${eventsLength} events for ${blobName}`))
-                events = []
-              }
-
+              insertEventsIfBatchIsFull(true)
               callback(null)
             },
             transform(data: HfpRow, encoding: BufferEncoding, callback) {
@@ -97,40 +105,21 @@ export async function hfpTask(date: string) {
 
               let eventKey = createSpecificEventKey(data)
 
-              if (existingKeys.includes(eventKey)) {
-                logMaxTimes('Event skipped', `Existing event ${eventKey} skipped.`, 10)
-                return callback(null)
-              }
+              if (!existingKeys.includes(eventKey)) {
+                events.push(data)
 
-              events.push(data)
-
-              let eventsLength = events.length
-
-              if (eventsLength >= BATCH_SIZE) {
-                insertQueue
-                  .add(() => insertEvents(events, eventGroup))
-                  .then(() => console.log(`Inserted ${eventsLength} events for ${blobName}`))
-
-                events = []
+                insertEventsIfBatchIsFull(false)
               }
 
               callback(null)
             },
           })
 
-          let blobStream = eventStream.pipe(insertStream)
-
-          blobStream.on('end', () => {
-            console.log(`------------ Blob stream ${blobName} ended. ----------------------`)
-          })
-
-          finished(blobStream, (err) => {
+          pipeline(eventStream, parse(getCsvParseOptions(hfpColumns)), insertStream, (err) => {
             if (err) {
               reject(err)
             } else {
-              eventStream!.destroy()
-
-              logTime(`Events fetched and inserted ${blobName}`, blobTime)
+              logTime(`Event stream ended for blob ${blobName}`, blobTime)
               resolve(blobName)
             }
           })

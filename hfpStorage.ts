@@ -1,8 +1,4 @@
 import { getBlobDownloadStream, getContainer, listBlobs } from './azureStorage'
-import { getCsvParseOptions } from './parseCsv'
-import { hfpColumns } from './hfpColumns'
-import parse from 'csv-parse'
-import { pipeline, Transform } from 'stream'
 import { EventGroup, HfpRow } from './hfp'
 import { format } from 'date-fns'
 
@@ -45,7 +41,7 @@ export async function getHfpBlobs(date: string, eventGroup: EventGroup) {
 }
 
 export async function createJourneyBlobStreamer(): Promise<
-  (blobName: string) => Promise<Transform | undefined>
+  (blobName: string) => Promise<NodeJS.ReadableStream | undefined>
 > {
   let container = await getContainer(hfpContainerName)
 
@@ -56,12 +52,6 @@ export async function createJourneyBlobStreamer(): Promise<
       return
     }
 
-    return pipeline<Transform>(blobStream, parse(getCsvParseOptions(hfpColumns)), (err) => {
-      if (err) {
-        console.log(`Stream ${blobName} error`, err)
-      }
-
-      console.log(`Stream ${blobName} finished.`)
-    })
+    return blobStream
   }
 }
