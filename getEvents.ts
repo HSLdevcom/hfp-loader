@@ -9,7 +9,7 @@ export async function getEvents(date: string, table: string) {
   let existingEvents = await knex.raw(
     `
       SELECT *
-      FROM :table: t
+      FROM public.:table: t
       WHERE t.oday = :date
     `,
     { table, date }

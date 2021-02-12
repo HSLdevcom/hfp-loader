@@ -9,15 +9,13 @@ import { getEvents } from './getEvents'
 import parse from 'csv-parse'
 import { getCsvParseOptions } from './parseCsv'
 import { hfpColumns } from './hfpColumns'
-import { getKnex } from './knex'
+import { createTransactionPool } from './knex'
 import { transformHfpItem } from './transformHfpItem'
 
 const BATCH_SIZE = 5000
 
 export async function hfpTask(date: string) {
   let time = process.hrtime()
-  let knex = getKnex()
-
   const BLOB_CONCURRENCY = 10
 
   let blobQueue = new PQueue({
@@ -58,27 +56,16 @@ export async function hfpTask(date: string) {
           let blobTime = process.hrtime()
           console.log(`Processing blob ${blobName}`)
 
-          let trx = await knex.transaction()
-
-          let insertQueue = new PQueue({
-            concurrency: 10,
-          })
+          let blobTrxPool = await createTransactionPool(10)
 
           // Call when the blob is done. Finishes the queued inserts and closes the transaction.
           async function onBlobDone(err?: any) {
             if (err) {
-              console.error(err)
-              insertQueue.clear()
-
               logTime(`Event stream ERROR for blob ${blobName}`, blobTime)
-              return reject(trx.rollback(err))
+              return reject(err)
             }
 
-            await insertQueue.onIdle()
-
-            if (!trx.isCompleted()) {
-              await trx.commit()
-            }
+            await blobTrxPool.closePool()
 
             logTime(`Event stream ended for blob ${blobName}`, blobTime)
             return resolve(blobName)
@@ -98,10 +85,8 @@ export async function hfpTask(date: string) {
             let shouldInsertBatch = flush ? eventsLength !== 0 : eventsLength >= BATCH_SIZE
 
             if (shouldInsertBatch) {
-              logMaxTimes(`Inserting rows for ${blobName}`, events.length, 10)
-
-              insertQueue
-                .add(() => upsert(trx, table, events))
+              blobTrxPool
+                .runWithTransaction((trx) => upsert(trx, table, events))
                 .then(() => console.log(`Inserted ${eventsLength} events for ${blobName}`))
                 .catch(onBlobDone) // Rollback if error
 
