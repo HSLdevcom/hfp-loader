@@ -14,8 +14,7 @@ export function getKnex(): Knex {
     connection: PG_CONNECTION,
     pool: {
       min: 0,
-      max: 110,
-      acquireTimeoutMillis: 1000 * 60 * 60,
+      max: 300,
     },
   })
 
@@ -38,7 +37,7 @@ class TransactionPool {
     let knex = getKnex()
     let transactions: Transaction[] = []
 
-    for (let i = 0; i <= count; i++) {
+    for (let i = 0; i < count; i++) {
       let trx = await knex.transaction()
       transactions.push(trx)
     }
@@ -72,11 +71,12 @@ class TransactionPool {
         )
       } else {
         try {
+          // console.log(`[TRX Pool] Transaction acquired, performing task.`)
           let taskResult = await task(trx)
           this.releaseTransaction(trx)
           resolve(taskResult)
         } catch (err) {
-          console.error('Task error!', err)
+          console.error('[TRX Pool] Task error!', err)
           reject(this.rollbackTransaction(trx, err))
         }
       }
@@ -91,23 +91,27 @@ class TransactionPool {
     let trxLength = this.transactions.length
     let freeTrxIdx = -1
 
-    for (let i = 0; i <= trxLength; i++) {
+    for (let i = 0; i < trxLength; i++) {
       if (!this.occupiedTransactions.includes(i)) {
         freeTrxIdx = i
         break
       }
     }
 
-    if (freeTrxIdx === -1) {
+    let trx = this.transactions[freeTrxIdx]
+
+    if (!trx) {
       return
     }
 
-    let trx = this.transactions[freeTrxIdx]
-
+    // Sanity check to not return a completed transaction. Should not really happen.
+    // If it does happen, instead replace the closed one with a new transaction.
     if (trx.isCompleted()) {
       trx = await getKnex().transaction()
       this.transactions.splice(freeTrxIdx, 1, trx)
     }
+
+    // console.log(`[TRX Pool] Transaction acquired ${freeTrxIdx}`)
 
     this.occupiedTransactions.push(freeTrxIdx)
     return trx
@@ -117,6 +121,7 @@ class TransactionPool {
     let trxIdx = this.transactions.indexOf(trx)
 
     if (trxIdx !== -1) {
+      // console.log(`[TRX Pool] Transaction released ${trxIdx}`)
       let occupiedIdx = this.occupiedTransactions.indexOf(trxIdx)
 
       if (occupiedIdx !== -1) {
@@ -127,6 +132,8 @@ class TransactionPool {
 
   async closePool() {
     this.isActive = false
+
+    // console.log(`[TRX Pool] Transaction pool closed.`)
 
     return Promise.all(
       this.transactions.map((trx) => trx.executionPromise.then(() => trx.commit()))
@@ -142,6 +149,7 @@ class TransactionPool {
     }
 
     if (!trx.isCompleted()) {
+      // console.log(`[TRX Pool] Transaction rolled back ${trxIdx}`)
       return trx.rollback(err)
     }
 

@@ -2,27 +2,19 @@ import { pipeline, Transform } from 'stream'
 import { logTime } from './utils/logTime'
 import { EventGroup, eventGroupTables, HfpRow } from './hfp'
 import { createJourneyBlobStreamer, createSpecificEventKey, getHfpBlobs } from './hfpStorage'
-import PQueue from 'p-queue'
 import { upsert } from './upsert'
-import { logMaxTimes } from './utils/logMaxTimes'
 import { getEvents } from './getEvents'
 import parse from 'csv-parse'
 import { getCsvParseOptions } from './parseCsv'
 import { hfpColumns } from './hfpColumns'
 import { createTransactionPool } from './knex'
 import { transformHfpItem } from './transformHfpItem'
+import PQueue from 'p-queue'
 
-const BATCH_SIZE = 5000
+const BATCH_SIZE = 1000
 
 export async function hfpTask(date: string) {
   let time = process.hrtime()
-  const BLOB_CONCURRENCY = 10
-
-  let blobQueue = new PQueue({
-    concurrency: BLOB_CONCURRENCY,
-    timeout: 100 * 1000,
-  })
-
   let getJourneyBlobStream = await createJourneyBlobStreamer()
 
   let eventGroups = [
@@ -48,7 +40,13 @@ export async function hfpTask(date: string) {
     let existingEvents = await getEvents(date, table)
     let existingKeys = existingEvents.map(createSpecificEventKey)
 
+    console.log(existingKeys.slice(0, 10))
+
     logTime(`Existing events loaded for ${eventGroup}`, eventGroupTime)
+
+    let blobQueue = new PQueue({
+      concurrency: 10,
+    })
 
     for (let blobName of groupBlobs) {
       let blobTask = () =>
@@ -56,18 +54,26 @@ export async function hfpTask(date: string) {
           let blobTime = process.hrtime()
           console.log(`Processing blob ${blobName}`)
 
-          let blobTrxPool = await createTransactionPool(10)
+          const INSERT_CONCURRENCY = 10
+
+          let insertQueue = new PQueue({
+            concurrency: INSERT_CONCURRENCY,
+          })
+
+          let blobTrxPool = await createTransactionPool(INSERT_CONCURRENCY)
 
           // Call when the blob is done. Finishes the queued inserts and closes the transaction.
           async function onBlobDone(err?: any) {
             if (err) {
               logTime(`Event stream ERROR for blob ${blobName}`, blobTime)
+              insertQueue.clear()
               return reject(err)
             }
 
+            await insertQueue.onIdle()
             await blobTrxPool.closePool()
 
-            logTime(`Event stream ended for blob ${blobName}`, blobTime)
+            logTime(`Event stream completed for blob ${blobName}`, blobTime)
             return resolve(blobName)
           }
 
@@ -80,15 +86,14 @@ export async function hfpTask(date: string) {
 
           let events: HfpRow[] = []
 
-          async function insertEventsIfBatchIsFull(flush: boolean = false) {
+          function insertEventsIfBatchIsFull(flush: boolean = false) {
             let eventsLength = events.length
             let shouldInsertBatch = flush ? eventsLength !== 0 : eventsLength >= BATCH_SIZE
 
             if (shouldInsertBatch) {
-              blobTrxPool
-                .runWithTransaction((trx) => upsert(trx, table, events))
+              insertQueue
+                .add(() => blobTrxPool.runWithTransaction((trx) => upsert(trx, table, events)))
                 .then(() => console.log(`Inserted ${eventsLength} events for ${blobName}`))
-                .catch(onBlobDone) // Rollback if error
 
               events = []
             }
@@ -96,11 +101,12 @@ export async function hfpTask(date: string) {
 
           let insertStream = new Transform({
             objectMode: true,
-            flush(callback) {
+            flush: (callback) => {
+              console.log(`Flushing insert stream for ${blobName}`)
               insertEventsIfBatchIsFull(true)
               callback(null)
             },
-            transform(data: HfpRow, encoding: BufferEncoding, callback) {
+            transform: (data: HfpRow, encoding: BufferEncoding, callback) => {
               // Unsigned and vehicle position events come from the same storage group,
               // but are inserted in different tables. Skip if the journey_type is
               // wrong for either case.
@@ -108,11 +114,6 @@ export async function hfpTask(date: string) {
                 (eventGroup === EventGroup.UnsignedEvent && data.journey_type !== 'unsigned') ||
                 (eventGroup === EventGroup.VehiclePosition && data.journey_type !== 'journey')
               ) {
-                logMaxTimes(
-                  'Invalid VP event skipped',
-                  `Invalid ${data.journey_type} event for ${eventGroups} skipped.`,
-                  10
-                )
                 return callback(null)
               }
 
@@ -120,7 +121,6 @@ export async function hfpTask(date: string) {
               let eventKey = createSpecificEventKey(dataItem)
 
               if (!existingKeys.includes(eventKey)) {
-                logMaxTimes(`Received new event from blob ${blobName}`, eventKey, 10)
                 events.push(dataItem)
                 insertEventsIfBatchIsFull(false)
               }
@@ -130,17 +130,18 @@ export async function hfpTask(date: string) {
           })
 
           pipeline(eventStream, parse(getCsvParseOptions(hfpColumns)), insertStream, (err) => {
+            console.log(`Stream done for blob ${blobName}.`)
             onBlobDone(err)
           })
         })
 
       blobQueue.add(blobTask).catch((err) => {
-        console.log(err)
+        console.error(err)
       })
     }
-  }
 
-  await blobQueue.onIdle()
+    await blobQueue.onIdle()
+  }
 
   logTime(`HFP loading task completed`, time)
 }
