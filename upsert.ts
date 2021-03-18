@@ -1,15 +1,15 @@
-import { getKnex } from './knex'
 import { chunk } from 'lodash'
 import { HfpRow } from './hfp'
-import { Transaction } from 'knex'
+import { getKnex } from './knex'
 
 // "Upsert" function for PostgreSQL. Inserts or updates lines in bulk. Insert if
 // the primary key for the line is available, update otherwise.
-export async function upsert(trx: Transaction, tableName: string, items: HfpRow[]) {
+export function upsert(tableName: string, items: HfpRow[]): Promise<number> {
   if (items.length === 0) {
-    return Promise.resolve()
+    return Promise.resolve(0)
   }
 
+  let knex = getKnex()
   let tableId = `public.${tableName}`
 
   // Get the set of keys for all items from the first item.
@@ -21,6 +21,8 @@ export async function upsert(trx: Transaction, tableName: string, items: HfpRow[
   let itemsPerQuery = Math.ceil(10000 / Math.max(1, keysLength))
   // Split the items up into chunks
   let queryChunks = chunk(items, itemsPerQuery)
+
+  let prevInsertPromise = Promise.resolve(items.length)
 
   // Create upsert queries for each chunk of items.
   for (let itemsChunk of queryChunks) {
@@ -56,6 +58,11 @@ ON CONFLICT DO NOTHING;
 `
 
     const upsertBindings = [tableId, ...itemKeys, ...insertValues]
-    await trx.raw(upsertQuery, upsertBindings)
+
+    prevInsertPromise = prevInsertPromise.then(() =>
+      knex.raw(upsertQuery, upsertBindings).then(() => items.length)
+    )
   }
+
+  return prevInsertPromise
 }

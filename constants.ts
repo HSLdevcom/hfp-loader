@@ -63,5 +63,6 @@ export const REDIS_PORT: string = secretsEnv.REDIS_PORT || '6379'
 export const REDIS_PASSWORD: string | undefined = secretsEnv.REDIS_PASSWORD || undefined
 export const REDIS_SSL: boolean = secretsEnv.REDIS_SSL === 'true'
 export const DISABLE_CACHE = secretsEnv.DISABLE_CACHE === 'true'
-export const HFP_SCHEMA = secretsEnv.HFP_SCHEMA || 'hfp'
-export const INSERT_CONCURRENCY = 50
+export const HFP_SCHEMA = secretsEnv.HFP_SCHEMAHFP_SCHEMA || 'hfp'
+export const INSERT_CONCURRENCY = parseInt(secretsEnv.INSERT_CONCURRENCY || '100', 10)
+export const BLOB_CONCURRENCY = parseInt(secretsEnv.BLOB_CONCURRENCY || '1', 10)

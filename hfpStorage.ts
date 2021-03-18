@@ -9,7 +9,6 @@ let eventTypePrefixes = {
   [EventGroup.StopEvent]: blobsPrefix + 'StopEvent/',
   [EventGroup.OtherEvent]: blobsPrefix + 'OtherEvent/',
   [EventGroup.VehiclePosition]: blobsPrefix + 'VehiclePosition/',
-  [EventGroup.UnsignedEvent]: blobsPrefix + 'VehiclePosition/',
 }
 
 export function createSpecificEventKey(item: HfpRow) {

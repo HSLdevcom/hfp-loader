@@ -2,26 +2,18 @@ import { logTime } from './utils/logTime'
 import { EventGroup, eventGroupTables } from './hfp'
 import { createJourneyBlobStreamer, createSpecificEventKey, getHfpBlobs } from './hfpStorage'
 import { getEvents } from './getEvents'
-import { createTransactionPool } from './knex'
 import PQueue from 'p-queue'
-import { INSERT_CONCURRENCY } from './constants'
 import { insertHfpBlobData } from './insertHfp'
 
 export async function hfpTask(date: string) {
   let time = process.hrtime()
   let getJourneyBlobStream = await createJourneyBlobStreamer()
 
-  let eventGroups = [
-    EventGroup.StopEvent,
-    EventGroup.UnsignedEvent,
-    EventGroup.VehiclePosition,
-    EventGroup.OtherEvent,
-  ]
+  let eventGroups = [EventGroup.StopEvent, EventGroup.VehiclePosition, EventGroup.OtherEvent]
 
   for (let eventGroup of eventGroups) {
     let eventGroupTime = process.hrtime()
     let groupBlobs = await getHfpBlobs(date, eventGroup)
-    console.log(eventGroup)
 
     if (groupBlobs.length === 0) {
       continue
@@ -32,14 +24,19 @@ export async function hfpTask(date: string) {
     console.log(`Loading existing events for ${eventGroup}`)
 
     let existingEvents = await getEvents(date, table)
-    let existingKeys = existingEvents.map(createSpecificEventKey)
 
+    if (eventGroup === EventGroup.VehiclePosition) {
+      let existingUnsignedEvents = await getEvents(date, 'unsignedevent')
+      existingEvents = [...existingEvents, ...existingUnsignedEvents]
+    }
+
+    let existingKeys = existingEvents.map(createSpecificEventKey)
     console.log(existingKeys.slice(0, 10))
 
     logTime(`Existing events loaded for ${eventGroup}`, eventGroupTime)
 
     let blobQueue = new PQueue({
-      concurrency: 10,
+      concurrency: 3,
     })
 
     for (let blobName of groupBlobs) {
@@ -56,19 +53,12 @@ export async function hfpTask(date: string) {
 
               return eventStream
             })
-            .then((eventStream) =>
-              createTransactionPool(INSERT_CONCURRENCY).then((trxPool) => ({
-                eventStream,
-                trxPool,
-              }))
-            )
-            .then(({ eventStream, trxPool }) => {
+            .then((eventStream) => {
               insertHfpBlobData({
                 blobName,
                 table,
                 existingKeys,
                 eventGroup,
-                trxPool,
                 eventStream,
                 onDone: resolve,
                 onError: reject,

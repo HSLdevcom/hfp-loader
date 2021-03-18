@@ -9,6 +9,7 @@ import { createSpecificEventKey } from './hfpStorage'
 import parse from 'csv-parse'
 import { getCsvParseOptions } from './parseCsv'
 import { hfpColumns } from './hfpColumns'
+import { logMaxTimes } from './utils/logMaxTimes'
 
 const BATCH_SIZE = 2500
 
@@ -18,12 +19,11 @@ export function insertHfpBlobData({
   eventGroup,
   existingKeys,
   eventStream,
-  trxPool,
   onDone,
   onError,
 }) {
   let blobTime = process.hrtime()
-  let events: HfpRow[] = []
+  let eventsByTable: { [tableName: string]: HfpRow[] } = { [table]: [] }
 
   let insertQueue = new PQueue({
     concurrency: INSERT_CONCURRENCY,
@@ -31,6 +31,8 @@ export function insertHfpBlobData({
 
   // Call when the blob is done. Finishes the queued inserts and closes the transaction.
   async function onBlobDone(err?: any) {
+    eventStream.destroy()
+
     if (err) {
       logTime(`Event stream ERROR for blob ${blobName}`, blobTime)
       insertQueue.clear()
@@ -38,13 +40,12 @@ export function insertHfpBlobData({
     }
 
     await insertQueue.onIdle()
-    await trxPool.closePool()
 
     logTime(`Event stream completed for blob ${blobName}`, blobTime)
     return onDone(blobName)
   }
 
-  function insertEvents(dataToInsert) {
+  function insertEvents(dataToInsert: HfpRow[], tableName: string) {
     let whenQueueAcceptsTasks = Promise.resolve()
 
     // Wait for the queue to finish work if it gets too large
@@ -53,55 +54,56 @@ export function insertHfpBlobData({
     }
 
     return whenQueueAcceptsTasks.then(() => {
-      return insertQueue
-        .add(() => trxPool.runWithTransaction((trx) => upsert(trx, table, events)))
+      insertQueue
+        .add(() => upsert(tableName, dataToInsert))
         .then(() => console.log(`Inserted ${dataToInsert.length} events for ${blobName}`))
+        .catch(onBlobDone)
     })
   }
 
   function insertEventsIfBatchIsFull(flush: boolean = false) {
-    let eventsLength = events.length
-    let shouldInsertBatch = flush ? eventsLength !== 0 : eventsLength >= BATCH_SIZE
+    let insertPromises: Promise<unknown>[] = []
 
-    let insertPromise = Promise.resolve()
+    for (let [tableName, events] of Object.entries(eventsByTable)) {
+      let eventsLength = events.length
+      let shouldInsertBatch = flush ? eventsLength !== 0 : eventsLength >= BATCH_SIZE
 
-    if (shouldInsertBatch) {
-      insertPromise = insertEvents(events)
-      events = []
+      if (shouldInsertBatch) {
+        let insertPromise = insertEvents(events, tableName)
+        eventsByTable[tableName] = []
+        insertPromises.push(insertPromise)
+      }
     }
 
-    return insertPromise
+    return Promise.all(insertPromises)
   }
 
   let insertStream = new Transform({
     objectMode: true,
     flush: (callback) => {
       console.log(`Flushing insert stream for ${blobName}`)
-      insertEventsIfBatchIsFull(true)
-        .then(() => callback(null))
-        .catch((err) => callback(err))
+      insertEventsIfBatchIsFull(true).then(() => callback(null))
     },
     transform: (data: HfpRow, encoding: BufferEncoding, callback) => {
       // Unsigned and vehicle position events come from the same storage group,
       // but are inserted in different tables. Skip if the journey_type is
       // wrong for either case.
-      if (
-        (eventGroup === EventGroup.UnsignedEvent && data.journey_type !== 'unsigned') ||
-        (eventGroup === EventGroup.VehiclePosition && data.journey_type !== 'journey')
-      ) {
-        return callback(null)
+      let tableName = table
+
+      if (eventGroup === EventGroup.VehiclePosition && data.journey_type !== 'journey') {
+        tableName = 'unsignedevent'
       }
+
+      logMaxTimes(`Event received for table ${tableName}`, [data], 10)
 
       let dataItem = transformHfpItem(data)
       let eventKey = createSpecificEventKey(dataItem)
 
       if (!existingKeys.includes(eventKey)) {
-        events.push(dataItem)
+        eventsByTable[tableName].push(dataItem)
       }
 
-      insertEventsIfBatchIsFull(false)
-        .then(() => callback(null))
-        .catch((err) => callback(err))
+      insertEventsIfBatchIsFull(false).then(() => callback(null))
     },
   })
 
