@@ -3,7 +3,7 @@ import { EventGroup, eventGroupTables } from '../utils/hfp'
 import { createJourneyBlobStreamer, createSpecificEventKey, getHfpBlobs } from './hfpStorage'
 import { getEvents } from '../utils/getEvents'
 import PQueue from 'p-queue'
-import { insertHfpBlobData } from './insertHfp'
+import { insertHfpFromBlobStream } from './insertHfpFromBlobStream'
 
 export async function hfpTask(date: string) {
   let time = process.hrtime()
@@ -54,7 +54,7 @@ export async function hfpTask(date: string) {
               return eventStream
             })
             .then((eventStream) => {
-              insertHfpBlobData({
+              insertHfpFromBlobStream({
                 blobName,
                 table,
                 existingKeys,

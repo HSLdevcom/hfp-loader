@@ -13,7 +13,7 @@ import { logMaxTimes } from '../utils/logMaxTimes'
 
 const BATCH_SIZE = 2500
 
-export function insertHfpBlobData({
+export function insertHfpFromBlobStream({
   blobName,
   table,
   eventGroup,
