@@ -4,6 +4,7 @@ import { createJourneyBlobStreamer, createSpecificEventKey, getHfpBlobs } from '
 import { getEvents } from '../utils/getEvents'
 import PQueue from 'p-queue'
 import { insertHfpFromBlobStream } from './insertHfpFromBlobStream'
+import { BLOB_CONCURRENCY } from '../constants'
 
 export async function hfpTask(date: string) {
   let time = process.hrtime()
@@ -36,7 +37,7 @@ export async function hfpTask(date: string) {
     logTime(`Existing events loaded for ${eventGroup}`, eventGroupTime)
 
     let blobQueue = new PQueue({
-      concurrency: 3,
+      concurrency: BLOB_CONCURRENCY,
     })
 
     for (let blobName of groupBlobs) {
@@ -44,7 +45,7 @@ export async function hfpTask(date: string) {
         new Promise<string>((resolve, reject) => {
           console.log(`Processing blob ${blobName}`)
 
-          getJourneyBlobStream(blobName)
+          return getJourneyBlobStream(blobName)
             .then((eventStream) => {
               if (!eventStream) {
                 console.log(`No data found for blob ${blobName}`)
@@ -53,7 +54,7 @@ export async function hfpTask(date: string) {
 
               return eventStream
             })
-            .then((eventStream) => {
+            .then((eventStream) =>
               insertHfpFromBlobStream({
                 blobName,
                 table,
@@ -63,7 +64,7 @@ export async function hfpTask(date: string) {
                 onDone: resolve,
                 onError: reject,
               })
-            })
+            )
         })
 
       blobQueue.add(blobTask).catch((err) => {
@@ -72,6 +73,7 @@ export async function hfpTask(date: string) {
     }
 
     await blobQueue.onIdle()
+    logTime(`HFP events inserted for ${eventGroup}`, time)
   }
 
   logTime(`HFP loading task completed`, time)

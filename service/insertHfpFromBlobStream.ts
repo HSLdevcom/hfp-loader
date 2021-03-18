@@ -29,20 +29,17 @@ export function insertHfpFromBlobStream({
     concurrency: INSERT_CONCURRENCY,
   })
 
-  // Call when the blob is done. Finishes the queued inserts and closes the transaction.
-  async function onBlobDone(err?: any) {
+  function onBlobError(err) {
     eventStream.destroy()
+    logTime(`Event stream ERROR for blob ${blobName}`, blobTime)
+    insertQueue.clear()
+    onError(err)
+  }
 
-    if (err) {
-      logTime(`Event stream ERROR for blob ${blobName}`, blobTime)
-      insertQueue.clear()
-      return onError(err)
-    }
-
-    await insertQueue.onIdle()
-
+  // Call when the blob is done. Finishes the queued inserts and closes the transaction.
+  function onBlobDone() {
+    eventStream.destroy()
     logTime(`Event stream completed for blob ${blobName}`, blobTime)
-    return onDone(blobName)
   }
 
   function insertEvents(dataToInsert: HfpRow[], tableName: string) {
@@ -57,7 +54,7 @@ export function insertHfpFromBlobStream({
       insertQueue
         .add(() => upsert(tableName, dataToInsert))
         .then(() => console.log(`Inserted ${dataToInsert.length} events for ${blobName}`))
-        .catch(onBlobDone)
+        .catch(onBlobError)
     })
   }
 
@@ -94,10 +91,10 @@ export function insertHfpFromBlobStream({
         tableName = 'unsignedevent'
       }
 
-      logMaxTimes(`Event received for table ${tableName}`, [data], 10)
-
       let dataItem = transformHfpItem(data)
       let eventKey = createSpecificEventKey(dataItem)
+
+      logMaxTimes(`Event received for table ${tableName}`, [eventKey], 10)
 
       if (!existingKeys.includes(eventKey)) {
         eventsByTable[tableName].push(dataItem)
@@ -108,7 +105,12 @@ export function insertHfpFromBlobStream({
   })
 
   pipeline(eventStream, parse(getCsvParseOptions(hfpColumns)), insertStream, (err) => {
-    console.log(`Stream done for blob ${blobName}.`)
-    onBlobDone(err)
+    if (err) {
+      onBlobError(err)
+    } else {
+      onBlobDone()
+    }
   })
+
+  return insertQueue.onIdle().then(() => onDone())
 }
