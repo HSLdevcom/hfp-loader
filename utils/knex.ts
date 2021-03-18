@@ -1,5 +1,5 @@
 import Knex from 'knex'
-import { PG_CONNECTION } from './constants'
+import { PG_CONNECTION } from '../constants'
 
 let knexInstance: Knex | null = null
 

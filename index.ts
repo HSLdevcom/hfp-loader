@@ -1,5 +1,5 @@
 import { isValid, parseISO } from 'date-fns'
-import { hfpTask } from './hfpTask'
+import { hfpTask } from './service/hfpTask'
 
 if (process.argv.length === 2) {
   console.error('Expected at least one argument!')

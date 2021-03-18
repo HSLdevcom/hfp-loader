@@ -1,5 +1,5 @@
-import { getBlobDownloadStream, getContainer, listBlobs } from './azureStorage'
-import { EventGroup, HfpRow } from './hfp'
+import { getBlobDownloadStream, getContainer, listBlobs } from '../utils/azureStorage'
+import { EventGroup, HfpRow } from '../utils/hfp'
 import { format, formatISO, parseISO } from 'date-fns'
 
 let hfpContainerName = 'hfp-v2'

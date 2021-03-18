@@ -1,7 +1,7 @@
-import { logTime } from './utils/logTime'
-import { EventGroup, eventGroupTables } from './hfp'
+import { logTime } from '../utils/logTime'
+import { EventGroup, eventGroupTables } from '../utils/hfp'
 import { createJourneyBlobStreamer, createSpecificEventKey, getHfpBlobs } from './hfpStorage'
-import { getEvents } from './getEvents'
+import { getEvents } from '../utils/getEvents'
 import PQueue from 'p-queue'
 import { insertHfpBlobData } from './insertHfp'
 

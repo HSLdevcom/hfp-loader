@@ -1,5 +1,5 @@
 import { BlobServiceClient, ContainerClient } from '@azure/storage-blob'
-import { HFP_STORAGE_CONNECTION_STRING } from './constants'
+import { HFP_STORAGE_CONNECTION_STRING } from '../constants'
 
 let storageClient: BlobServiceClient | null = null
 

@@ -1,15 +1,15 @@
-import { logTime } from './utils/logTime'
+import { logTime } from '../utils/logTime'
 import PQueue from 'p-queue'
-import { upsert } from './upsert'
-import { EventGroup, HfpRow } from './hfp'
-import { INSERT_CONCURRENCY } from './constants'
+import { upsert } from '../utils/upsert'
+import { EventGroup, HfpRow } from '../utils/hfp'
+import { INSERT_CONCURRENCY } from '../constants'
 import { pipeline, Transform } from 'stream'
-import { transformHfpItem } from './transformHfpItem'
+import { transformHfpItem } from '../utils/transformHfpItem'
 import { createSpecificEventKey } from './hfpStorage'
 import parse from 'csv-parse'
-import { getCsvParseOptions } from './parseCsv'
-import { hfpColumns } from './hfpColumns'
-import { logMaxTimes } from './utils/logMaxTimes'
+import { getCsvParseOptions } from '../utils/parseCsv'
+import { hfpColumns } from '../utils/hfpColumns'
+import { logMaxTimes } from '../utils/logMaxTimes'
 
 const BATCH_SIZE = 2500
 
