@@ -42,6 +42,9 @@ export const PG_CONNECTION = {
   password: secretsEnv.PGPASSWORD,
   database: secretsEnv.PGDATABASE,
   ssl: secretsEnv.PG_SSL === 'true',
+  extra: {
+    ssl: secretsEnv.PG_SSL === 'true',
+  },
 }
 
 export const HFP_STORAGE_CONNECTION_STRING = secretsEnv.HFP_STORAGE_CONNECTION_STRING || ''
