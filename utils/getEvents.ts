@@ -8,7 +8,7 @@ export async function getEvents(date: string, table: string) {
   // language=PostgreSQL
   let existingEvents = await knex.raw(
     `
-      SELECT *
+      SELECT t.uuid
       FROM public.:table: t
       WHERE t.oday = :date
     `,

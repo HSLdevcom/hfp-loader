@@ -20,7 +20,15 @@ if (!dateValid) {
   process.exit(1)
 }
 
-;(async (loadDate) => {
-  console.log(`Loading events for ${loadDate}`)
-  await hfpTask(loadDate)
-})(date)
+let isDone = false
+
+console.log(`Loading events for ${date}`)
+hfpTask(date, () => (isDone = true)).then(() => console.log(`All events loaded for ${date}`))
+
+// Keep the process going until done. Otherwise it will quit if there are no events to insert for a blob.
+// This is a Node limitation.
+;(function wait() {
+  if (!isDone) {
+    setTimeout(wait, 1000)
+  }
+})()

@@ -22,13 +22,11 @@ docker run -p 5432:5432 -v [host path to data dir]:/var/lib/postgresql/data --en
 
 Use the included `postgres_schema.sql` file to create the database tables.
 
-Then, run the app with this command:
+Then, run the app with this command, giving the date to load data for as the only argument:
 
 ```
 yarn start 2021-02-09
 ```
-
-Substitute the date for the date you want to load.
 
 ## The Plan
 

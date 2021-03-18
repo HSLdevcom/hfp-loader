@@ -4,9 +4,9 @@ import { getKnex } from './knex'
 
 // "Upsert" function for PostgreSQL. Inserts or updates lines in bulk. Insert if
 // the primary key for the line is available, update otherwise.
-export function upsert(tableName: string, items: HfpRow[]): Promise<number> {
+export function upsert(tableName: string, items: HfpRow[]): Promise<void> {
   if (items.length === 0) {
-    return Promise.resolve(0)
+    return Promise.resolve()
   }
 
   let knex = getKnex()
@@ -22,7 +22,7 @@ export function upsert(tableName: string, items: HfpRow[]): Promise<number> {
   // Split the items up into chunks
   let queryChunks = chunk(items, itemsPerQuery)
 
-  let prevInsertPromise = Promise.resolve(items.length)
+  let insertPromise = Promise.resolve()
 
   // Create upsert queries for each chunk of items.
   for (let itemsChunk of queryChunks) {
@@ -58,11 +58,8 @@ ON CONFLICT DO NOTHING;
 `
 
     const upsertBindings = [tableId, ...itemKeys, ...insertValues]
-
-    prevInsertPromise = prevInsertPromise.then(() =>
-      knex.raw(upsertQuery, upsertBindings).then(() => items.length)
-    )
+    insertPromise = insertPromise.then(() => knex.raw(upsertQuery, upsertBindings))
   }
 
-  return prevInsertPromise
+  return insertPromise
 }

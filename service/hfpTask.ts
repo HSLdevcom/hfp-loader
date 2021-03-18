@@ -6,11 +6,11 @@ import PQueue from 'p-queue'
 import { insertHfpFromBlobStream } from './insertHfpFromBlobStream'
 import { BLOB_CONCURRENCY } from '../constants'
 
-export async function hfpTask(date: string) {
+export async function hfpTask(date: string, onDone: () => unknown) {
   let time = process.hrtime()
   let getJourneyBlobStream = await createJourneyBlobStreamer()
 
-  let eventGroups = [EventGroup.StopEvent, EventGroup.VehiclePosition, EventGroup.OtherEvent]
+  let eventGroups = [EventGroup.VehiclePosition, EventGroup.StopEvent, EventGroup.OtherEvent]
 
   for (let eventGroup of eventGroups) {
     let eventGroupTime = process.hrtime()
@@ -32,20 +32,20 @@ export async function hfpTask(date: string) {
     }
 
     let existingKeys = existingEvents.map(createSpecificEventKey)
-    console.log(existingKeys.slice(0, 10))
 
     logTime(`Existing events loaded for ${eventGroup}`, eventGroupTime)
 
     let blobQueue = new PQueue({
       concurrency: BLOB_CONCURRENCY,
+      throwOnTimeout: true,
     })
 
     for (let blobName of groupBlobs) {
       let blobTask = () =>
-        new Promise<string>((resolve, reject) => {
+        new Promise<string>(async (resolve, reject) => {
           console.log(`Processing blob ${blobName}`)
 
-          return getJourneyBlobStream(blobName)
+          await getJourneyBlobStream(blobName)
             .then((eventStream) => {
               if (!eventStream) {
                 console.log(`No data found for blob ${blobName}`)
@@ -54,17 +54,22 @@ export async function hfpTask(date: string) {
 
               return eventStream
             })
-            .then((eventStream) =>
-              insertHfpFromBlobStream({
-                blobName,
-                table,
-                existingKeys,
-                eventGroup,
-                eventStream,
-                onDone: resolve,
-                onError: reject,
-              })
-            )
+            .then((eventStream) => {
+              if (eventStream) {
+                return insertHfpFromBlobStream({
+                  blobName,
+                  table,
+                  existingKeys,
+                  eventGroup,
+                  eventStream,
+                  onDone: resolve,
+                  onError: reject,
+                })
+              }
+
+              return Promise.resolve()
+            })
+            .catch(reject)
         })
 
       blobQueue.add(blobTask).catch((err) => {
@@ -77,4 +82,5 @@ export async function hfpTask(date: string) {
   }
 
   logTime(`HFP loading task completed`, time)
+  onDone()
 }
