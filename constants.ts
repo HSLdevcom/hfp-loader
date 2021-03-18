@@ -64,3 +64,4 @@ export const REDIS_PASSWORD: string | undefined = secretsEnv.REDIS_PASSWORD || u
 export const REDIS_SSL: boolean = secretsEnv.REDIS_SSL === 'true'
 export const DISABLE_CACHE = secretsEnv.DISABLE_CACHE === 'true'
 export const HFP_SCHEMA = secretsEnv.HFP_SCHEMA || 'hfp'
+export const INSERT_CONCURRENCY = 50
