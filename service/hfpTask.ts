@@ -1,19 +1,72 @@
 import { logTime } from '../utils/logTime'
-import { EventGroup, eventGroupTables } from '../utils/hfp'
+import { EventGroup, eventGroupTables, HfpRow } from '../utils/hfp'
 import { createJourneyBlobStreamer, createSpecificEventKey, getHfpBlobs } from './hfpStorage'
 import { getEvents } from '../utils/getEvents'
 import PQueue from 'p-queue'
 import { insertHfpFromBlobStream } from './insertHfpFromBlobStream'
-import { BLOB_CONCURRENCY } from '../constants'
+import { BLOB_CONCURRENCY, INSERT_CONCURRENCY } from '../constants'
+import { compact } from 'lodash'
+import { upsert } from '../utils/upsert'
+import prexit from 'prexit'
+import { getKnex } from '../utils/knex'
 
 export async function hfpTask(date: string, onDone: () => unknown) {
   let time = process.hrtime()
   let getJourneyBlobStream = await createJourneyBlobStreamer()
 
-  let eventGroups = [EventGroup.VehiclePosition, EventGroup.StopEvent, EventGroup.OtherEvent]
+  let insertQueue = new PQueue({
+    concurrency: INSERT_CONCURRENCY,
+  })
+
+  let blobQueue = new PQueue({
+    concurrency: BLOB_CONCURRENCY,
+  })
+
+  async function onExit() {
+    insertQueue.clear()
+    blobQueue.clear()
+    await blobQueue.onIdle()
+    await insertQueue.onIdle()
+    await getKnex().destroy()
+  }
+
+  prexit(onExit)
+
+  async function onError(err) {
+    console.log('Loader task error', err)
+    process.exit(1)
+  }
+
+  let waitingForQueue = false
+  let whenQueueAcceptsTasks = Promise.resolve()
+
+  function insertEvents(dataToInsert: HfpRow[], tableName: string) {
+    if (dataToInsert.length === 0) {
+      return whenQueueAcceptsTasks
+    }
+
+    // Wait for the queue to finish work if it gets too large
+    if (insertQueue.size > INSERT_CONCURRENCY && !waitingForQueue) {
+      waitingForQueue = true
+      whenQueueAcceptsTasks = insertQueue.onEmpty()
+    }
+
+    whenQueueAcceptsTasks = whenQueueAcceptsTasks.then(() => {
+      waitingForQueue = false
+
+      insertQueue // Do not return insert promise! It would hold up the whole stream.
+        .add(() => upsert(tableName, dataToInsert))
+        .catch(onError)
+
+      return Promise.resolve()
+    })
+
+    return whenQueueAcceptsTasks
+  }
+
+  let eventGroups = [EventGroup.StopEvent, EventGroup.OtherEvent, EventGroup.VehiclePosition]
 
   for (let eventGroup of eventGroups) {
-    let eventGroupTime = process.hrtime()
     let groupBlobs = await getHfpBlobs(date, eventGroup)
 
     if (groupBlobs.length === 0) {
@@ -26,19 +79,13 @@ export async function hfpTask(date: string, onDone: () => unknown) {
 
     let existingEvents = await getEvents(date, table)
 
+    // Also check existing VP events from the unsigned events table.
     if (eventGroup === EventGroup.VehiclePosition) {
       let existingUnsignedEvents = await getEvents(date, 'unsignedevent')
       existingEvents = [...existingEvents, ...existingUnsignedEvents]
     }
 
-    let existingKeys = existingEvents.map(createSpecificEventKey)
-
-    logTime(`Existing events loaded for ${eventGroup}`, eventGroupTime)
-
-    let blobQueue = new PQueue({
-      concurrency: BLOB_CONCURRENCY,
-      throwOnTimeout: true,
-    })
+    let existingKeys = new Set<string>(compact(existingEvents.map(createSpecificEventKey)))
 
     for (let blobName of groupBlobs) {
       let blobTask = () =>
@@ -62,6 +109,7 @@ export async function hfpTask(date: string, onDone: () => unknown) {
                   existingKeys,
                   eventGroup,
                   eventStream,
+                  onBatch: insertEvents,
                   onDone: resolve,
                   onError: reject,
                 })
@@ -72,14 +120,12 @@ export async function hfpTask(date: string, onDone: () => unknown) {
             .catch(reject)
         })
 
-      blobQueue.add(blobTask).catch((err) => {
-        console.error(err)
-      })
+      blobQueue.add(blobTask).catch(onError)
     }
-
-    await blobQueue.onIdle()
-    logTime(`HFP events inserted for ${eventGroup}`, time)
   }
+
+  await blobQueue.onIdle()
+  await insertQueue.onIdle()
 
   logTime(`HFP loading task completed`, time)
   onDone()

@@ -1,7 +1,7 @@
 import { getKnex } from './knex'
 
 export async function getEvents(date: string, table: string) {
-  let knex = await getKnex()
+  let knex = getKnex()
   // The HFP tables do not have primary keys, so we must filter out events that already
   // exist in the table. Fetch the existing events for the date to facilitate this.
 

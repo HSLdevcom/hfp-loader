@@ -1,65 +1,49 @@
-import { chunk } from 'lodash'
 import { HfpRow } from './hfp'
 import { getKnex } from './knex'
 
 // "Upsert" function for PostgreSQL. Inserts or updates lines in bulk. Insert if
 // the primary key for the line is available, update otherwise.
 export function upsert(tableName: string, items: HfpRow[]): Promise<void> {
-  if (items.length === 0) {
+  let itemsLength = items.length
+
+  if (itemsLength === 0) {
     return Promise.resolve()
   }
 
   let knex = getKnex()
+
   let tableId = `public.${tableName}`
 
   // Get the set of keys for all items from the first item.
   // All items should have the same keys.
   const itemKeys = Object.keys(items[0])
-  const keysLength = itemKeys.length
   let placeholderRow = `(${itemKeys.map(() => '?').join(',')})`
 
-  let itemsPerQuery = Math.ceil(10000 / Math.max(1, keysLength))
-  // Split the items up into chunks
-  let queryChunks = chunk(items, itemsPerQuery)
+  // Create a string of placeholder values (?,?,?) for each item we want to insert
+  let valuesPlaceholders: string[] = []
 
-  let insertPromise = Promise.resolve()
+  // Collect all values to insert from all objects in a one-dimensional array.
+  let insertValues: any[] = []
 
-  // Create upsert queries for each chunk of items.
-  for (let itemsChunk of queryChunks) {
-    let chunkLength = itemsChunk.length
-    // Create a string of placeholder values (?,?,?) for each item we want to insert
-    let valuesPlaceholders: string[] = []
+  let valueIdx = 0
 
-    // Collect all values to insert from all objects in a one-dimensional array.
-    let insertValues: any[] = []
+  for (let item of items) {
+    if (item) {
+      valuesPlaceholders.push(placeholderRow)
 
-    let itemIdx = 0
-    let valueIdx = 0
-
-    while (itemIdx < chunkLength) {
-      let insertItem = itemsChunk[itemIdx]
-
-      if (insertItem) {
-        valuesPlaceholders.push(placeholderRow)
-
-        for (let k = 0; k < keysLength; k++) {
-          insertValues[valueIdx] = insertItem[itemKeys[k]]
-          valueIdx++
-        }
+      for (let key of itemKeys) {
+        insertValues[valueIdx] = item[key]
+        valueIdx++
       }
-
-      itemIdx++
     }
+  }
 
-    const upsertQuery = `
+  const upsertQuery = `
 INSERT INTO ?? (${itemKeys.map(() => '??').join(',')})
 VALUES ${valuesPlaceholders.join(',')}
 ON CONFLICT DO NOTHING;
 `
 
-    const upsertBindings = [tableId, ...itemKeys, ...insertValues]
-    insertPromise = insertPromise.then(() => knex.raw(upsertQuery, upsertBindings))
-  }
-
-  return insertPromise
+  const upsertBindings = [tableId, ...itemKeys, ...insertValues]
+  return knex.raw(upsertQuery, upsertBindings).then(() => {})
 }

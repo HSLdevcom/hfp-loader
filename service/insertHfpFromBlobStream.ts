@@ -1,16 +1,13 @@
 import { logTime } from '../utils/logTime'
-import PQueue from 'p-queue'
-import { upsert } from '../utils/upsert'
 import { EventGroup, HfpRow } from '../utils/hfp'
-import { INSERT_CONCURRENCY } from '../constants'
-import { finished, Transform } from 'stream'
+import { pipeline, Transform } from 'stream'
 import { transformHfpItem } from '../utils/transformHfpItem'
 import { createSpecificEventKey } from './hfpStorage'
 import parse from 'csv-parse'
 import { getCsvParseOptions } from '../utils/parseCsv'
 import { hfpColumns } from '../utils/hfpColumns'
 
-const BATCH_SIZE = 5000
+const BATCH_SIZE = 2000
 
 export function insertHfpFromBlobStream({
   blobName,
@@ -18,57 +15,39 @@ export function insertHfpFromBlobStream({
   eventGroup,
   existingKeys,
   eventStream,
+  onBatch,
   onDone,
   onError,
 }: {
   blobName: string
   table: string
   eventGroup: EventGroup
-  existingKeys: string[]
+  existingKeys: Set<string>
   eventStream: NodeJS.ReadableStream
+  onBatch: (events: HfpRow[], tableName: string) => Promise<unknown>
   onDone: (string) => unknown
   onError: (err: Error) => unknown
 }) {
   let blobTime = process.hrtime()
-  let eventsByTable: { [tableName: string]: HfpRow[] } = { [table]: [] }
-
   let insertsQueued = 0
   let insertsCompleted = 0
 
-  let insertQueue = new PQueue({
-    concurrency: INSERT_CONCURRENCY,
-  })
+  let statusInterval = setInterval(() => {
+    console.log(
+      `[${blobName}] Inserts queued: ${insertsQueued} | Inserts completed: ${insertsCompleted}`
+    )
+  }, 10000)
+
+  let eventsByTable: { [tableName: string]: HfpRow[] } = { [table]: [] }
 
   function onBlobError(err) {
     logTime(`Event stream ERROR for blob ${blobName}`, blobTime)
-    insertQueue.clear()
     onError(err)
   }
 
-  function insertEvents(dataToInsert: HfpRow[], tableName: string) {
-    let whenQueueAcceptsTasks = Promise.resolve()
-
-    // Wait for the queue to finish work if it gets too large
-    if (insertQueue.size > INSERT_CONCURRENCY) {
-      whenQueueAcceptsTasks = insertQueue.onEmpty()
-    }
-
-    return whenQueueAcceptsTasks.then(() => {
-      insertsQueued++
-
-      insertQueue // Do not return insert promise! It would hold up the whole stream.
-        .add(() => upsert(tableName, dataToInsert))
-        .then(() => {
-          insertsCompleted++
-          console.log(`Inserted ${dataToInsert.length} events for ${blobName}`)
-        })
-        .catch(onBlobError)
-
-      return Promise.resolve()
-    })
-  }
-
-  function insertEventsIfBatchIsFull(flush: boolean = false) {
+  // Sends the batch to the insert queue with the onBatch callback.
+  // flush = send the batch if i has any length, else wait for the length to become
+  function sendBatchIfFull(flush: boolean = false) {
     let insertPromise = Promise.resolve()
 
     for (let tableName in eventsByTable) {
@@ -77,7 +56,13 @@ export function insertHfpFromBlobStream({
       let shouldInsertBatch = flush ? eventsLength !== 0 : eventsLength >= BATCH_SIZE
 
       if (shouldInsertBatch) {
-        insertPromise = insertPromise.then(() => insertEvents(events, tableName))
+        insertPromise = insertPromise.then(() => {
+          insertsQueued++
+
+          return onBatch(events, tableName).then(() => {
+            insertsCompleted++
+          })
+        })
         eventsByTable[tableName] = []
       }
     }
@@ -85,59 +70,42 @@ export function insertHfpFromBlobStream({
     return insertPromise
   }
 
-  let streamPromise = new Promise<void>((resolve, reject) => {
-    let insertStream = new Transform({
-      objectMode: true,
-      flush: (callback) => {
-        console.log(`Flushing insert stream for ${blobName}`)
-        insertEventsIfBatchIsFull(true).then(() => callback(null))
-      },
-      transform: (data: HfpRow, encoding: BufferEncoding, callback) => {
-        // Unsigned and vehicle position events come from the same storage group,
-        // but are inserted in different tables. Skip if the journey_type is
-        // wrong for either case.
-        let tableName = table
+  let insertStream = new Transform({
+    objectMode: true,
+    flush: (callback) => {
+      console.log(`Flushing insert stream for ${blobName}`)
+      sendBatchIfFull(true).then(() => callback(null))
+    },
+    transform: (data: HfpRow, encoding: BufferEncoding, callback) => {
+      // Unsigned and vehicle position events come from the same storage group,
+      // but are inserted in different tables. Skip if the journey_type is
+      // wrong for either case.
+      let tableName = table
 
-        if (eventGroup === EventGroup.VehiclePosition && data.journey_type !== 'journey') {
-          tableName = 'unsignedevent'
-        }
-
-        let dataItem = transformHfpItem(data)
-        let eventKey = createSpecificEventKey(dataItem)
-
-        if (!eventKey || !existingKeys.includes(eventKey)) {
-          eventsByTable[tableName].push(dataItem)
-        }
-
-        insertEventsIfBatchIsFull(false).then(() => callback(null))
-      },
-    })
-
-    let blobStream = eventStream.pipe(parse(getCsvParseOptions(hfpColumns))).pipe(insertStream)
-
-    eventStream.on('end', () => {
-      console.log(`------------ Blob stream ${blobName} ended. ----------------------`)
-    })
-
-    finished(blobStream, (err) => {
-      if (err) {
-        reject(err)
-      } else {
-        logTime(`Event stream completed for blob ${blobName}`, blobTime)
-        resolve()
+      if (eventGroup === EventGroup.VehiclePosition && data.journey_type !== 'journey') {
+        tableName = 'unsignedevent'
       }
-    })
+
+      let dataItem = transformHfpItem(data)
+      let eventKey = createSpecificEventKey(dataItem)
+
+      if (eventKey && !existingKeys.has(eventKey)) {
+        eventsByTable[tableName].push(dataItem)
+        sendBatchIfFull(false).then(() => callback(null))
+      } else {
+        callback(null)
+      }
+    },
   })
 
-  return streamPromise
-    .then(() => insertQueue.add(() => Promise.resolve()))
-    .then(() => insertQueue.onIdle())
-    .then(() => {
-      console.log(
-        `${blobName} | Inserts queued: ${insertsQueued} | Inserts completed: ${insertsCompleted}`
-      )
+  pipeline(eventStream, parse(getCsvParseOptions(hfpColumns)), insertStream, (err) => {
+    clearInterval(statusInterval)
 
+    if (err) {
+      onBlobError(err)
+    } else {
+      logTime(`Event stream completed for blob ${blobName}`, blobTime)
       onDone(blobName)
-    })
-    .catch(onBlobError)
+    }
+  })
 }

@@ -4,7 +4,7 @@ import { PG_CONNECTION } from '../constants'
 let knexInstance: Knex | null = null
 
 export function getKnex(): Knex {
-  if (knexInstance instanceof Knex) {
+  if (knexInstance) {
     return knexInstance
   }
 
@@ -14,9 +14,9 @@ export function getKnex(): Knex {
     connection: PG_CONNECTION,
     pool: {
       min: 0,
-      max: 300,
+      max: 500,
       idleTimeoutMillis: 30000,
-      acquireTimeoutMillis: 50000,
+      acquireTimeoutMillis: 30000,
     },
   })
 
