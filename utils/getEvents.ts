@@ -15,7 +15,5 @@ export async function getEvents(date: string, table: string): Promise<{ uuid?: s
     [date]
   )
 
-  console.log(existingEvents)
-
   return existingEvents?.rows || []
 }

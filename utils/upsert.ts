@@ -18,8 +18,8 @@ export function upsert(tableName: string, items: HfpRow[]): Promise<void> {
   // All items should have the same keys.
   const itemKeys = Object.keys(items[0])
 
-  // Create a string of placeholder values (?,?,?) for each item we want to insert
-  let valuesPlaceholders: string[] = []
+  // Create a string of placeholder values ($1,$2,$3) for each item we want to insert
+  let valuePlaceholders: string[] = []
 
   // Collect all values to insert from all objects in a one-dimensional array.
   let insertValues: any[] = []
@@ -33,18 +33,18 @@ export function upsert(tableName: string, items: HfpRow[]): Promise<void> {
 
       for (let key of itemKeys) {
         placeholders.push(`$${valueIdx}`)
-        insertValues[valueIdx] = item[key]
+        insertValues.push(item[key])
         valueIdx++
       }
 
       let placeholderRow = `(${placeholders.join(',')})`
-      valuesPlaceholders.push(placeholderRow)
+      valuePlaceholders.push(placeholderRow)
     }
   }
 
   const upsertQuery = `
 INSERT INTO ${tableId} (${itemKeys.join(',')})
-VALUES ${valuesPlaceholders.join(',')}
+VALUES ${valuePlaceholders.join(',')}
 ON CONFLICT DO NOTHING;
 `
 
