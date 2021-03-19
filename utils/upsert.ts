@@ -1,5 +1,5 @@
 import { HfpRow } from './hfp'
-import { getKnex } from './knex'
+import { getPool } from './pg'
 
 // "Upsert" function for PostgreSQL. Inserts or updates lines in bulk. Insert if
 // the primary key for the line is available, update otherwise.
@@ -10,14 +10,13 @@ export function upsert(tableName: string, items: HfpRow[]): Promise<void> {
     return Promise.resolve()
   }
 
-  let knex = getKnex()
+  let pool = getPool()
 
   let tableId = `public.${tableName}`
 
   // Get the set of keys for all items from the first item.
   // All items should have the same keys.
   const itemKeys = Object.keys(items[0])
-  let placeholderRow = `(${itemKeys.map(() => '?').join(',')})`
 
   // Create a string of placeholder values (?,?,?) for each item we want to insert
   let valuesPlaceholders: string[] = []
@@ -25,25 +24,29 @@ export function upsert(tableName: string, items: HfpRow[]): Promise<void> {
   // Collect all values to insert from all objects in a one-dimensional array.
   let insertValues: any[] = []
 
-  let valueIdx = 0
+  // pg params are 1-indexed
+  let valueIdx = 1
 
   for (let item of items) {
     if (item) {
-      valuesPlaceholders.push(placeholderRow)
+      let placeholders: string[] = []
 
       for (let key of itemKeys) {
+        placeholders.push(`$${valueIdx}`)
         insertValues[valueIdx] = item[key]
         valueIdx++
       }
+
+      let placeholderRow = `(${placeholders.join(',')})`
+      valuesPlaceholders.push(placeholderRow)
     }
   }
 
   const upsertQuery = `
-INSERT INTO ?? (${itemKeys.map(() => '??').join(',')})
+INSERT INTO ${tableId} (${itemKeys.join(',')})
 VALUES ${valuesPlaceholders.join(',')}
 ON CONFLICT DO NOTHING;
 `
 
-  const upsertBindings = [tableId, ...itemKeys, ...insertValues]
-  return knex.raw(upsertQuery, upsertBindings).then(() => {})
+  return pool.query(upsertQuery, insertValues).then(() => {})
 }

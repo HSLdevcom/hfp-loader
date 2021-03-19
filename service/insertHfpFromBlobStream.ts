@@ -7,7 +7,7 @@ import parse from 'csv-parse'
 import { getCsvParseOptions } from '../utils/parseCsv'
 import { hfpColumns } from '../utils/hfpColumns'
 
-const BATCH_SIZE = 2000
+const BATCH_SIZE = 1000
 
 export function insertHfpFromBlobStream({
   blobName,

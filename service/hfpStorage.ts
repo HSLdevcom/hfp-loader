@@ -1,5 +1,5 @@
 import { getBlobDownloadStream, getContainer, listBlobs } from '../utils/azureStorage'
-import { EventGroup, HfpRow } from '../utils/hfp'
+import { EventGroup } from '../utils/hfp'
 
 let hfpContainerName = 'hfp-v2'
 let blobsPrefix = 'csv/'
@@ -10,7 +10,7 @@ let eventTypePrefixes = {
   [EventGroup.VehiclePosition]: blobsPrefix + 'VehiclePosition/',
 }
 
-export function createSpecificEventKey(item: HfpRow) {
+export function createSpecificEventKey(item: { uuid?: string | null }) {
   return item.uuid
 }
 

@@ -8,7 +8,7 @@ import { BLOB_CONCURRENCY, INSERT_CONCURRENCY } from '../constants'
 import { compact } from 'lodash'
 import { upsert } from '../utils/upsert'
 import prexit from 'prexit'
-import { getKnex } from '../utils/knex'
+import { getPool } from '../utils/pg'
 
 export async function hfpTask(date: string, onDone: () => unknown) {
   let time = process.hrtime()
@@ -27,7 +27,7 @@ export async function hfpTask(date: string, onDone: () => unknown) {
     blobQueue.clear()
     await blobQueue.onIdle()
     await insertQueue.onIdle()
-    await getKnex().destroy()
+    await getPool().end()
   }
 
   prexit(onExit)
@@ -77,7 +77,7 @@ export async function hfpTask(date: string, onDone: () => unknown) {
 
     console.log(`Loading existing events for ${eventGroup}`)
 
-    let existingEvents = await getEvents(date, table)
+    let existingEvents = (await getEvents(date, table).catch(onError)) || []
 
     // Also check existing VP events from the unsigned events table.
     if (eventGroup === EventGroup.VehiclePosition) {
