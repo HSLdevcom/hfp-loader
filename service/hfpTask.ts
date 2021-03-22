@@ -5,7 +5,7 @@ import { getEvents } from '../utils/getEvents'
 import PQueue from 'p-queue'
 import { insertHfpFromBlobStream } from './insertHfpFromBlobStream'
 import { INSERT_CONCURRENCY } from '../constants'
-import { compact, uniq } from 'lodash'
+import { chunk, compact } from 'lodash'
 import { upsert } from '../utils/upsert'
 import prexit from 'prexit'
 import { getPool } from '../utils/pg'
@@ -94,10 +94,16 @@ export async function hfpTask(date: string, onDone: () => unknown) {
       existingEvents = [...existingEvents, ...existingUnsignedEvents]
     }
 
-    let existingEventUuids: string[] = compact(uniq(existingEvents.map(createSpecificEventKey)))
+    let existingUuidChunks = chunk(compact(existingEvents.map(createSpecificEventKey)), 1000000)
+    let existingEventUuids: Set<string>[] = []
+
+    for (let uuidChunk of existingUuidChunks) {
+      let set = new Set(uuidChunk)
+      existingEventUuids.push(set)
+    }
 
     function eventExists(eventId: string) {
-      return existingEventUuids.includes(eventId)
+      return existingEventUuids.some((set) => set.has(eventId))
     }
 
     for (currentBlob of groupBlobs) {
