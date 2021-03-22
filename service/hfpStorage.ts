@@ -26,7 +26,7 @@ export async function getHfpBlobs(date: string, eventGroup: EventGroup) {
   return hfpBlobs
 }
 
-export async function createJourneyBlobStreamer(): Promise<
+export async function createEventsBlobStreamer(): Promise<
   (blobName: string) => Promise<NodeJS.ReadableStream | undefined>
 > {
   let container = await getContainer(hfpContainerName)

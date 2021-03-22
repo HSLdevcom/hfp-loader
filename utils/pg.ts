@@ -11,7 +11,7 @@ export function getPool() {
   pgPool = new Pool({
     ...PG_CONNECTION,
     min: 0,
-    max: 500,
+    max: 100,
     idleTimeoutMillis: 30000,
   })
 

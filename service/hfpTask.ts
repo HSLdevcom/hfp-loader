@@ -1,10 +1,10 @@
 import { logTime } from '../utils/logTime'
 import { EventGroup, eventGroupTables, HfpRow } from '../utils/hfp'
-import { createJourneyBlobStreamer, createSpecificEventKey, getHfpBlobs } from './hfpStorage'
+import { createEventsBlobStreamer, createSpecificEventKey, getHfpBlobs } from './hfpStorage'
 import { getEvents } from '../utils/getEvents'
 import PQueue from 'p-queue'
 import { insertHfpFromBlobStream } from './insertHfpFromBlobStream'
-import { BLOB_CONCURRENCY, INSERT_CONCURRENCY } from '../constants'
+import { INSERT_CONCURRENCY } from '../constants'
 import { compact } from 'lodash'
 import { upsert } from '../utils/upsert'
 import prexit from 'prexit'
@@ -12,21 +12,27 @@ import { getPool } from '../utils/pg'
 
 export async function hfpTask(date: string, onDone: () => unknown) {
   let time = process.hrtime()
-  let getJourneyBlobStream = await createJourneyBlobStreamer()
+  let getJourneyBlobStream = await createEventsBlobStreamer()
+
+  let insertsQueued = 0
+  let insertsCompleted = 0
+
+  let statusInterval = setInterval(() => {
+    console.log(
+      `[${date}] Inserts queued: ${insertsQueued} | Inserts completed: ${insertsCompleted}`
+    )
+  }, 10000)
 
   let insertQueue = new PQueue({
     concurrency: INSERT_CONCURRENCY,
   })
 
-  let blobQueue = new PQueue({
-    concurrency: BLOB_CONCURRENCY,
-  })
-
   async function onExit() {
+    console.log('HFP loader exiting.')
+
     insertQueue.clear()
-    blobQueue.clear()
-    await blobQueue.onIdle()
     await insertQueue.onIdle()
+
     await getPool().end()
   }
 
@@ -53,9 +59,13 @@ export async function hfpTask(date: string, onDone: () => unknown) {
 
     whenQueueAcceptsTasks = whenQueueAcceptsTasks.then(() => {
       waitingForQueue = false
+      insertsQueued++
 
       insertQueue // Do not return insert promise! It would hold up the whole stream.
         .add(() => upsert(tableName, dataToInsert))
+        .then(() => {
+          insertsCompleted++
+        })
         .catch(onError)
 
       return Promise.resolve()
@@ -88,44 +98,35 @@ export async function hfpTask(date: string, onDone: () => unknown) {
     let existingKeys = new Set<string>(compact(existingEvents.map(createSpecificEventKey)))
 
     for (let blobName of groupBlobs) {
-      let blobTask = () =>
-        new Promise<string>(async (resolve, reject) => {
-          console.log(`Processing blob ${blobName}`)
+      await new Promise<string>((resolve, reject) => {
+        console.log(`Processing blob ${blobName}`)
 
-          await getJourneyBlobStream(blobName)
-            .then((eventStream) => {
-              if (!eventStream) {
-                console.log(`No data found for blob ${blobName}`)
-                return resolve(blobName)
-              }
+        getJourneyBlobStream(blobName)
+          .then((eventStream) => {
+            if (!eventStream) {
+              console.log(`No data found for blob ${blobName}`)
+              return resolve(blobName)
+            }
 
-              return eventStream
+            insertHfpFromBlobStream({
+              blobName,
+              table,
+              existingKeys,
+              eventGroup,
+              eventStream,
+              onBatch: insertEvents,
+              onDone: resolve,
+              onError: reject,
             })
-            .then((eventStream) => {
-              if (eventStream) {
-                return insertHfpFromBlobStream({
-                  blobName,
-                  table,
-                  existingKeys,
-                  eventGroup,
-                  eventStream,
-                  onBatch: insertEvents,
-                  onDone: resolve,
-                  onError: reject,
-                })
-              }
-
-              return Promise.resolve()
-            })
-            .catch(reject)
-        })
-
-      blobQueue.add(blobTask).catch(onError)
+          })
+          .catch(reject)
+      }).catch(onError)
     }
   }
 
-  await blobQueue.onIdle()
   await insertQueue.onIdle()
+
+  clearInterval(statusInterval)
 
   logTime(`HFP loading task completed`, time)
   onDone()

@@ -24,19 +24,11 @@ export function insertHfpFromBlobStream({
   eventGroup: EventGroup
   existingKeys: Set<string>
   eventStream: NodeJS.ReadableStream
-  onBatch: (events: HfpRow[], tableName: string) => Promise<unknown>
+  onBatch: (events: HfpRow[], tableName: string) => Promise<void>
   onDone: (string) => unknown
   onError: (err: Error) => unknown
 }) {
   let blobTime = process.hrtime()
-  let insertsQueued = 0
-  let insertsCompleted = 0
-
-  let statusInterval = setInterval(() => {
-    console.log(
-      `[${blobName}] Inserts queued: ${insertsQueued} | Inserts completed: ${insertsCompleted}`
-    )
-  }, 10000)
 
   let eventsByTable: { [tableName: string]: HfpRow[] } = { [table]: [] }
 
@@ -46,7 +38,7 @@ export function insertHfpFromBlobStream({
   }
 
   // Sends the batch to the insert queue with the onBatch callback.
-  // flush = send the batch if i has any length, else wait for the length to become
+  // flush = send the batch if it has any length, else wait for the batch to become full.
   function sendBatchIfFull(flush: boolean = false) {
     let insertPromise = Promise.resolve()
 
@@ -56,13 +48,7 @@ export function insertHfpFromBlobStream({
       let shouldInsertBatch = flush ? eventsLength !== 0 : eventsLength >= BATCH_SIZE
 
       if (shouldInsertBatch) {
-        insertPromise = insertPromise.then(() => {
-          insertsQueued++
-
-          return onBatch(events, tableName).then(() => {
-            insertsCompleted++
-          })
-        })
+        insertPromise = insertPromise.then(() => onBatch(events, tableName))
         eventsByTable[tableName] = []
       }
     }
@@ -99,8 +85,6 @@ export function insertHfpFromBlobStream({
   })
 
   pipeline(eventStream, parse(getCsvParseOptions(hfpColumns)), insertStream, (err) => {
-    clearInterval(statusInterval)
-
     if (err) {
       onBlobError(err)
     } else {
