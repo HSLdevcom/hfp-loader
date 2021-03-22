@@ -1,7 +1,8 @@
 import { getBlobDownloadStream, getContainer, listBlobs } from '../utils/azureStorage'
 import { EventGroup } from '../utils/hfp'
+import { HFP_STORAGE_CONTAINER } from '../constants'
 
-let hfpContainerName = 'hfp-v2'
+let hfpContainerName = HFP_STORAGE_CONTAINER
 let blobsPrefix = 'csv/'
 
 let eventTypePrefixes = {

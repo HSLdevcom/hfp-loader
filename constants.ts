@@ -48,6 +48,7 @@ export const PG_CONNECTION = {
 }
 
 export const HFP_STORAGE_CONNECTION_STRING = secretsEnv.HFP_STORAGE_CONNECTION_STRING || ''
+export const HFP_STORAGE_CONTAINER = secretsEnv.HFP_STORAGE_CONTAINER || 'hfp-v2'
 
 // URLs
 export const PATH_PREFIX = secretsEnv.PATH_PREFIX || '/'
@@ -68,4 +69,3 @@ export const REDIS_SSL: boolean = secretsEnv.REDIS_SSL === 'true'
 export const DISABLE_CACHE = secretsEnv.DISABLE_CACHE === 'true'
 export const HFP_SCHEMA = secretsEnv.HFP_SCHEMAHFP_SCHEMA || 'hfp'
 export const INSERT_CONCURRENCY = parseInt(secretsEnv.INSERT_CONCURRENCY || '100', 10)
-export const BLOB_CONCURRENCY = parseInt(secretsEnv.BLOB_CONCURRENCY || '1', 10)
