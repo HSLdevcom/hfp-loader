@@ -13,14 +13,14 @@ export function insertHfpFromBlobStream({
   blobName,
   table,
   eventGroup,
-  existingKeys,
+  eventExists,
   eventStream,
   onBatch,
 }: {
   blobName: string
   table: string
   eventGroup: EventGroup
-  existingKeys: Set<string>
+  eventExists: (eventKey: string) => boolean
   eventStream: NodeJS.ReadableStream
   onBatch: (events: HfpRow[], tableName: string) => Promise<void>
 }): Promise<string> {
@@ -73,7 +73,7 @@ export function insertHfpFromBlobStream({
         let dataItem = transformHfpItem(data)
         let eventKey = createSpecificEventKey(dataItem)
 
-        if (eventKey && !existingKeys.has(eventKey)) {
+        if (eventKey && !eventExists(eventKey)) {
           eventsByTable[tableName].push(dataItem)
           sendBatchIfFull(false)
         }

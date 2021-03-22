@@ -5,7 +5,7 @@ import { getEvents } from '../utils/getEvents'
 import PQueue from 'p-queue'
 import { insertHfpFromBlobStream } from './insertHfpFromBlobStream'
 import { INSERT_CONCURRENCY } from '../constants'
-import { compact } from 'lodash'
+import { compact, uniq } from 'lodash'
 import { upsert } from '../utils/upsert'
 import prexit from 'prexit'
 import { getPool } from '../utils/pg'
@@ -73,7 +73,7 @@ export async function hfpTask(date: string, onDone: () => unknown) {
     return whenQueueAcceptsTasks
   }
 
-  let eventGroups = [EventGroup.StopEvent, EventGroup.OtherEvent, EventGroup.VehiclePosition]
+  let eventGroups = [EventGroup.VehiclePosition, EventGroup.StopEvent, EventGroup.OtherEvent]
 
   for (let eventGroup of eventGroups) {
     let groupBlobs = await getHfpBlobs(date, eventGroup)
@@ -94,7 +94,11 @@ export async function hfpTask(date: string, onDone: () => unknown) {
       existingEvents = [...existingEvents, ...existingUnsignedEvents]
     }
 
-    let existingKeys = new Set<string>(compact(existingEvents.map(createSpecificEventKey)))
+    let existingEventUuids: string[] = compact(uniq(existingEvents.map(createSpecificEventKey)))
+
+    function eventExists(eventId: string) {
+      return existingEventUuids.includes(eventId)
+    }
 
     for (currentBlob of groupBlobs) {
       console.log(`Processing blob ${currentBlob}`)
@@ -109,7 +113,7 @@ export async function hfpTask(date: string, onDone: () => unknown) {
           return insertHfpFromBlobStream({
             blobName: currentBlob,
             table,
-            existingKeys,
+            eventExists,
             eventGroup,
             eventStream,
             onBatch: insertEvents,
