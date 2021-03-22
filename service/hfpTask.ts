@@ -11,7 +11,8 @@ import prexit from 'prexit'
 import { getPool } from '../utils/pg'
 
 export async function hfpTask(date: string, onDone: () => unknown) {
-  let time = process.hrtime()
+  let time = process.hrtime() // Track execution time
+  // Create the blob streamer here. Call the returned function with a blobName to get the stream.
   let getJourneyBlobStream = await createEventsBlobStreamer()
 
   let insertsQueued = 0
@@ -22,12 +23,14 @@ export async function hfpTask(date: string, onDone: () => unknown) {
     concurrency: INSERT_CONCURRENCY,
   })
 
+  // Log the status every 10 seconds.
   let statusInterval = setInterval(() => {
     console.log(
       `[${date}] Inserts queued: ${insertsQueued} | Inserts completed: ${insertsCompleted} | Current blob: ${currentBlob} | Queue size: ${insertQueue.size} | Queue pending: ${insertQueue.pending}`
     )
   }, 10000)
 
+  // Call this function when exiting the process doe to an error to clear the queue and shut down the pool.
   async function onExit() {
     console.log('HFP loader exiting.')
 
@@ -45,6 +48,8 @@ export async function hfpTask(date: string, onDone: () => unknown) {
     process.exit(1)
   }
 
+  // Insert the HFP rows in dataToInsert into tableName.
+  // Wait for the queue to calm down if it has gotten too full.
   function insertEvents(dataToInsert: HfpRow[], tableName: string) {
     let whenQueueAcceptsTasks = Promise.resolve()
 
@@ -60,6 +65,7 @@ export async function hfpTask(date: string, onDone: () => unknown) {
     whenQueueAcceptsTasks = whenQueueAcceptsTasks.then(() => {
       insertsQueued++
 
+      // Add the insert query to the insertQueue.
       insertQueue // Do not return insert promise! It would hold up the whole stream.
         .add(() => upsert(tableName, dataToInsert))
         .then(() => {
@@ -73,8 +79,10 @@ export async function hfpTask(date: string, onDone: () => unknown) {
     return whenQueueAcceptsTasks
   }
 
-  let eventGroups = [EventGroup.VehiclePosition, EventGroup.StopEvent, EventGroup.OtherEvent]
+  // The event groups will be inserted in this order.
+  let eventGroups = [EventGroup.StopEvent, EventGroup.OtherEvent, EventGroup.VehiclePosition]
 
+  // Loop through the event groups. They will not run concurrentöy.
   for (let eventGroup of eventGroups) {
     let groupBlobs = await getHfpBlobs(date, eventGroup)
 
