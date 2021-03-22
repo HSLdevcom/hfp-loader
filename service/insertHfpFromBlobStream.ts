@@ -57,7 +57,8 @@ export function insertHfpFromBlobStream({
       objectMode: true,
       flush: (callback) => {
         console.log(`Flushing insert stream for ${blobName}`)
-        sendBatchIfFull(true).then(() => callback(null))
+        sendBatchIfFull(true)
+        callback(null)
       },
       transform: (data: HfpRow, encoding: BufferEncoding, callback) => {
         // Unsigned and vehicle position events come from the same storage group,
@@ -74,10 +75,10 @@ export function insertHfpFromBlobStream({
 
         if (eventKey && !existingKeys.has(eventKey)) {
           eventsByTable[tableName].push(dataItem)
-          sendBatchIfFull(false).then(() => callback(null))
-        } else {
-          callback(null)
+          sendBatchIfFull(false)
         }
+
+        callback(null)
       },
     })
 

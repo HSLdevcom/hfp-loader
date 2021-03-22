@@ -11,7 +11,7 @@ let eventTypePrefixes = {
 }
 
 export function createSpecificEventKey(item: { uuid?: string | null }) {
-  return item.uuid
+  return item.uuid || ''
 }
 
 export async function getHfpBlobs(date: string, eventGroup: EventGroup) {
