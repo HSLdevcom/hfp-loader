@@ -16,16 +16,17 @@ export async function hfpTask(date: string, onDone: () => unknown) {
 
   let insertsQueued = 0
   let insertsCompleted = 0
-
-  let statusInterval = setInterval(() => {
-    console.log(
-      `[${date}] Inserts queued: ${insertsQueued} | Inserts completed: ${insertsCompleted}`
-    )
-  }, 10000)
+  let currentBlob = ''
 
   let insertQueue = new PQueue({
     concurrency: INSERT_CONCURRENCY,
   })
+
+  let statusInterval = setInterval(() => {
+    console.log(
+      `[${date}] Inserts queued: ${insertsQueued} | Inserts completed: ${insertsCompleted} | Current blob: ${currentBlob} | Queue size: ${insertQueue.size} | Queue pending: ${insertQueue.pending}`
+    )
+  }, 10000)
 
   async function onExit() {
     console.log('HFP loader exiting.')
@@ -34,6 +35,7 @@ export async function hfpTask(date: string, onDone: () => unknown) {
     await insertQueue.onIdle()
 
     await getPool().end()
+    console.log('HFP loader exited.')
   }
 
   prexit(onExit)
@@ -43,22 +45,19 @@ export async function hfpTask(date: string, onDone: () => unknown) {
     process.exit(1)
   }
 
-  let waitingForQueue = false
-  let whenQueueAcceptsTasks = Promise.resolve()
-
   function insertEvents(dataToInsert: HfpRow[], tableName: string) {
+    let whenQueueAcceptsTasks = Promise.resolve()
+
     if (dataToInsert.length === 0) {
       return whenQueueAcceptsTasks
     }
 
     // Wait for the queue to finish work if it gets too large
-    if (insertQueue.size > INSERT_CONCURRENCY && !waitingForQueue) {
-      waitingForQueue = true
+    if (insertQueue.size > INSERT_CONCURRENCY * 2) {
       whenQueueAcceptsTasks = insertQueue.onEmpty()
     }
 
     whenQueueAcceptsTasks = whenQueueAcceptsTasks.then(() => {
-      waitingForQueue = false
       insertsQueued++
 
       insertQueue // Do not return insert promise! It would hold up the whole stream.
@@ -97,33 +96,34 @@ export async function hfpTask(date: string, onDone: () => unknown) {
 
     let existingKeys = new Set<string>(compact(existingEvents.map(createSpecificEventKey)))
 
-    for (let blobName of groupBlobs) {
-      await new Promise<string>((resolve, reject) => {
-        console.log(`Processing blob ${blobName}`)
+    for (currentBlob of groupBlobs) {
+      console.log(`Processing blob ${currentBlob}`)
 
-        getJourneyBlobStream(blobName)
-          .then((eventStream) => {
-            if (!eventStream) {
-              console.log(`No data found for blob ${blobName}`)
-              return resolve(blobName)
-            }
+      await getJourneyBlobStream(currentBlob)
+        .then((eventStream) => {
+          if (!eventStream) {
+            console.log(`No data found for blob ${currentBlob}`)
+            return currentBlob
+          }
 
-            insertHfpFromBlobStream({
-              blobName,
-              table,
-              existingKeys,
-              eventGroup,
-              eventStream,
-              onBatch: insertEvents,
-              onDone: resolve,
-              onError: reject,
-            })
+          return insertHfpFromBlobStream({
+            blobName: currentBlob,
+            table,
+            existingKeys,
+            eventGroup,
+            eventStream,
+            onBatch: insertEvents,
           })
-          .catch(reject)
-      }).catch(onError)
+        })
+        .catch(onError)
+
+      console.log(`${currentBlob} Processed`)
     }
   }
 
+  console.log(`[${date}] Blobs done.`)
+
+  insertQueue.add(() => Promise.resolve())
   await insertQueue.onIdle()
 
   clearInterval(statusInterval)
