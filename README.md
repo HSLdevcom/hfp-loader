@@ -4,7 +4,7 @@ The task of this application is to fetch archived HFP data from an Azure storage
 
 ## Current state
 
-The app runs on a local computer as a Node script. The date is provided as the first command line argument.
+The app runs on a computer as a Node script. The date is provided as the first command line argument.
 
 First install all dependencies:
 
@@ -27,6 +27,26 @@ Then, run the app with this command, giving the date to load data for as the onl
 ```
 yarn start 2021-02-09
 ```
+
+### Run with Docker
+
+To run on a server, the best option is probably using Docker. The image can be built and pushed to the Transitlog registry in Azure with the `./deploy-all.sh` script. Make sure you are logged in to the registry prior to running it.
+
+Pull the image onto a server with:
+
+```
+docker pull transitlogregistry.azurecr.io/hsl/hfp-loader
+```
+
+Then create an env file where you are planning to run the HFP loader. The env file should at least contain all secret variables that are missing from .env.example.
+
+Run the HFP Loader like this:
+
+```
+docker run --env-file .env -it transitlogregistry.azurecr.io/hsl/hfp-loader 2021-02-11
+```
+
+Substitute `.env` with the name of the env file you just created, and the date at the end with the date you want to load HFP data for. Optionally substitute `-it` with `-d` to make it run detached, or in the background.
 
 ## The Plan
 
