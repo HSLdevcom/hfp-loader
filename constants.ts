@@ -47,6 +47,8 @@ export const PG_CONNECTION = {
   },
 }
 
+console.log(PG_CONNECTION)
+
 export const HFP_STORAGE_CONNECTION_STRING = secretsEnv.HFP_STORAGE_CONNECTION_STRING || ''
 export const HFP_STORAGE_CONTAINER = secretsEnv.HFP_STORAGE_CONTAINER || 'hfp-v2'
 
