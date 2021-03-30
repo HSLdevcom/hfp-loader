@@ -2,7 +2,8 @@
   "scripts": {
     "start": "node --max-old-space-size=16000 --inspect=9201 -r ts-node/register -r dotenv/config index.ts",
     "start:production": "node --max-old-space-size=16000 -r dotenv/config dist/index.js",
-    "build": "tsc"
+    "build": "tsc",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.4.1",
@@ -10,10 +11,11 @@
     "csv-parse": "^4.15.1",
     "date-fns": "^2.17.0",
     "dotenv": "^8.2.0",
-    "knex": "^0.21.17",
     "lodash": "^4.17.20",
     "p-queue": "^6.6.2",
-    "pg": "^8.5.1",
+    "patch-package": "^6.4.7",
+    "pg": "8.5.1",
+    "postinstall-postinstall": "^2.1.0",
     "prexit": "^0.0.5",
     "stream-transform": "^2.0.4",
     "ts-node": "^9.1.1",

@@ -33,7 +33,7 @@ export function upsert(tableName: string, items: HfpRow[]): Promise<void> {
 
       for (let key of itemKeys) {
         placeholders.push(`$${valueIdx}`)
-        insertValues.push(item[key])
+        insertValues.push(item[key] || null)
         valueIdx++
       }
 
@@ -42,11 +42,14 @@ export function upsert(tableName: string, items: HfpRow[]): Promise<void> {
     }
   }
 
-  const upsertQuery = `
+  if (insertValues.length === 0) {
+    throw new Error('No insert values!')
+  }
+
+  const insertQuery = `
 INSERT INTO ${tableId} (${itemKeys.join(',')})
-VALUES ${valuePlaceholders.join(',')}
-ON CONFLICT DO NOTHING;
+VALUES ${valuePlaceholders.join(',')};
 `
 
-  return pool.query(upsertQuery, insertValues).then(() => {})
+  return pool.query(insertQuery, insertValues).then(() => {})
 }

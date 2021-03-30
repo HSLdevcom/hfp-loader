@@ -1,0 +1,216 @@
+diff --git a/node_modules/pg-protocol/src/inbound-parser.test.ts b/node_modules/pg-protocol/src/inbound-parser.test.ts
+index 3fcbe41..364bd8d 100644
+--- a/node_modules/pg-protocol/src/inbound-parser.test.ts
++++ b/node_modules/pg-protocol/src/inbound-parser.test.ts
+@@ -144,6 +144,35 @@ var expectedTwoRowMessage = {
+   ],
+ }
+ 
++var emptyParameterDescriptionBuffer = new BufferList()
++  .addInt16(0) // number of parameters
++  .join(true, 't')
++
++var oneParameterDescBuf = buffers.parameterDescription([1111])
++
++var twoParameterDescBuf = buffers.parameterDescription([2222, 3333])
++
++var expectedEmptyParameterDescriptionMessage = {
++  name: 'parameterDescription',
++  length: 6,
++  parameterCount: 0,
++  dataTypeIDs: [],
++}
++
++var expectedOneParameterMessage = {
++  name: 'parameterDescription',
++  length: 10,
++  parameterCount: 1,
++  dataTypeIDs: [1111],
++}
++
++var expectedTwoParameterMessage = {
++  name: 'parameterDescription',
++  length: 14,
++  parameterCount: 2,
++  dataTypeIDs: [2222, 3333],
++}
++
+ var testForMessage = function (buffer: Buffer, expectedMessage: any) {
+   it('recieves and parses ' + expectedMessage.name, async () => {
+     const messages = await parseBuffers([buffer])
+@@ -245,6 +274,12 @@ describe('PgPacketStream', function () {
+     testForMessage(twoRowBuf, expectedTwoRowMessage)
+   })
+ 
++  describe('parameterDescription messages', function () {
++    testForMessage(emptyParameterDescriptionBuffer, expectedEmptyParameterDescriptionMessage)
++    testForMessage(oneParameterDescBuf, expectedOneParameterMessage)
++    testForMessage(twoParameterDescBuf, expectedTwoParameterMessage)
++  })
++
+   describe('parsing rows', function () {
+     describe('parsing empty row', function () {
+       testForMessage(emptyRowFieldBuf, {
+diff --git a/node_modules/pg-protocol/src/messages.ts b/node_modules/pg-protocol/src/messages.ts
+index 03c2f61..982186c 100644
+--- a/node_modules/pg-protocol/src/messages.ts
++++ b/node_modules/pg-protocol/src/messages.ts
+@@ -11,6 +11,7 @@ export const enum MessageName {
+   copyDone = 'copyDone',
+   copyData = 'copyData',
+   rowDescription = 'rowDescription',
++  parameterDescription = 'parameterDescription',
+   parameterStatus = 'parameterStatus',
+   backendKeyData = 'backendKeyData',
+   notification = 'notification',
+@@ -153,6 +154,14 @@ export class RowDescriptionMessage {
+   }
+ }
+ 
++export class ParameterDescriptionMessage {
++  public readonly name: MessageName = MessageName.parameterDescription
++  public readonly dataTypeIDs: number[]
++  constructor(public readonly length: number, public readonly parameterCount: number) {
++    this.dataTypeIDs = new Array(this.parameterCount)
++  }
++}
++
+ export class ParameterStatusMessage {
+   public readonly name: MessageName = MessageName.parameterStatus
+   constructor(
+diff --git a/node_modules/pg-protocol/src/parser.ts b/node_modules/pg-protocol/src/parser.ts
+index a00dabe..372a1c6 100644
+--- a/node_modules/pg-protocol/src/parser.ts
++++ b/node_modules/pg-protocol/src/parser.ts
+@@ -1,29 +1,30 @@
+ import { TransformOptions } from 'stream'
+ import {
+-  Mode,
++  AuthenticationMD5Password,
++  BackendKeyDataMessage,
++  BackendMessage,
+   bindComplete,
+-  parseComplete,
+   closeComplete,
+-  noData,
+-  portalSuspended,
+-  copyDone,
+-  replicationStart,
+-  emptyQuery,
+-  ReadyForQueryMessage,
+   CommandCompleteMessage,
+   CopyDataMessage,
++  copyDone,
+   CopyResponse,
+-  NotificationResponseMessage,
+-  RowDescriptionMessage,
+-  Field,
+-  DataRowMessage,
+-  ParameterStatusMessage,
+-  BackendKeyDataMessage,
+   DatabaseError,
+-  BackendMessage,
++  DataRowMessage,
++  emptyQuery,
++  Field,
+   MessageName,
+-  AuthenticationMD5Password,
++  Mode,
++  noData,
+   NoticeMessage,
++  NotificationResponseMessage,
++  ParameterDescriptionMessage,
++  ParameterStatusMessage,
++  parseComplete,
++  portalSuspended,
++  ReadyForQueryMessage,
++  replicationStart,
++  RowDescriptionMessage,
+ } from './messages'
+ import { BufferReader } from './buffer-reader'
+ import assert from 'assert'
+@@ -62,6 +63,7 @@ const enum MessageCodes {
+   ErrorMessage = 0x45, // E
+   NoticeMessage = 0x4e, // N
+   RowDescriptionMessage = 0x54, // T
++  ParameterDescriptionMessage = 0x74, // t
+   PortalSuspended = 0x73, // s
+   ReplicationStart = 0x57, // W
+   EmptyQuery = 0x49, // I
+@@ -150,7 +152,14 @@ export class Parser {
+     }
+   }
+ 
+-  private handlePacket(offset: number, code: number, length: number, bytes: Buffer): BackendMessage {
++  private handlePacket(
++    offset: number,
++    code: number,
++    length: number,
++    bytes: Buffer
++  ): BackendMessage {
++    console.log(code)
++
+     switch (code) {
+       case MessageCodes.BindComplete:
+         return bindComplete
+@@ -188,6 +197,8 @@ export class Parser {
+         return this.parseErrorMessage(offset, length, bytes, MessageName.notice)
+       case MessageCodes.RowDescriptionMessage:
+         return this.parseRowDescriptionMessage(offset, length, bytes)
++      case MessageCodes.ParameterDescriptionMessage:
++        return this.parseParameterDescriptionMessage(offset, length, bytes)
+       case MessageCodes.CopyIn:
+         return this.parseCopyInMessage(offset, length, bytes)
+       case MessageCodes.CopyOut:
+@@ -224,7 +235,12 @@ export class Parser {
+     return this.parseCopyMessage(offset, length, bytes, MessageName.copyOutResponse)
+   }
+ 
+-  private parseCopyMessage(offset: number, length: number, bytes: Buffer, messageName: MessageName) {
++  private parseCopyMessage(
++    offset: number,
++    length: number,
++    bytes: Buffer,
++    messageName: MessageName
++  ) {
+     this.reader.setBuffer(offset, bytes)
+     const isBinary = this.reader.byte() !== 0
+     const columnCount = this.reader.int16()
+@@ -264,6 +280,16 @@ export class Parser {
+     return new Field(name, tableID, columnID, dataTypeID, dataTypeSize, dataTypeModifier, mode)
+   }
+ 
++  private parseParameterDescriptionMessage(offset: number, length: number, bytes: Buffer) {
++    this.reader.setBuffer(offset, bytes)
++    const parameterCount = this.reader.int16()
++    const message = new ParameterDescriptionMessage(length, parameterCount)
++    for (let i = 0; i < parameterCount; i++) {
++      message.dataTypeIDs[i] = this.reader.int32()
++    }
++    return message
++  }
++
+   private parseDataRowMessage(offset: number, length: number, bytes: Buffer) {
+     this.reader.setBuffer(offset, bytes)
+     const fieldCount = this.reader.int16()
+diff --git a/node_modules/pg-protocol/src/testing/test-buffers.ts b/node_modules/pg-protocol/src/testing/test-buffers.ts
+index 19ba16c..e0a04a7 100644
+--- a/node_modules/pg-protocol/src/testing/test-buffers.ts
++++ b/node_modules/pg-protocol/src/testing/test-buffers.ts
+@@ -62,6 +62,16 @@ const buffers = {
+     return buf.join(true, 'T')
+   },
+ 
++  parameterDescription: function (dataTypeIDs: number[]) {
++    dataTypeIDs = dataTypeIDs || []
++    var buf = new BufferList()
++    buf.addInt16(dataTypeIDs.length)
++    dataTypeIDs.forEach(function (dataTypeID) {
++      buf.addInt32(dataTypeID)
++    })
++    return buf.join(true, 't')
++  },
++
+   dataRow: function (columns: any[]) {
+     columns = columns || []
+     var buf = new BufferList()

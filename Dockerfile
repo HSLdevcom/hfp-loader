@@ -10,6 +10,7 @@ RUN apt-get update && \
 ENV WORK /opt/hfp-loader
 
 WORKDIR ${WORK}
+COPY patches ${WORK}/patches
 
 # Install app dependencies
 COPY package.json ${WORK}
