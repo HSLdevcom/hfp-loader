@@ -24,13 +24,7 @@ export async function getHfpBlobs(date: string, eventGroup: EventGroup) {
   let container = await getContainer(hfpContainerName)
   // Build the path (called prefix in Azure blob storage parlance)
   let prefix = eventTypePrefixes[eventGroup] + date
-  let hfpBlobs = await listBlobs(container, prefix)
-
-  if (hfpBlobs.length === 0) {
-    return []
-  }
-
-  return hfpBlobs
+  return listBlobs(container, prefix)
 }
 
 // Get a stream of an individual blob by name.

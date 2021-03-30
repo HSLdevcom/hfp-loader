@@ -32,9 +32,6 @@ const secretsEnv = mapValues(process.env, (value, key) => {
 
 const numval = (val: string | number): number => (typeof val === 'string' ? parseInt(val, 10) : val)
 
-export const APP_PORT = numval(secretsEnv.PORT || '4100')
-export const DEBUG = secretsEnv.DEBUG === 'true' || false
-
 export const PG_CONNECTION = {
   host: secretsEnv.PGHOST,
   port: numval(secretsEnv.PGPORT || '5432'),
@@ -51,23 +48,5 @@ export const PG_POOL_SIZE = parseInt(secretsEnv.PG_POOL_SIZE || '50', 10)
 
 export const HFP_STORAGE_CONNECTION_STRING = secretsEnv.HFP_STORAGE_CONNECTION_STRING || ''
 export const HFP_STORAGE_CONTAINER = secretsEnv.HFP_STORAGE_CONTAINER || 'hfp-v2'
-
-// URLs
-export const PATH_PREFIX = secretsEnv.PATH_PREFIX || '/'
-
-// HSL ID authentication
-export const CLIENT_ID = secretsEnv.CLIENT_ID
-export const CLIENT_SECRET = secretsEnv.CLIENT_SECRET
-export const REDIRECT_URI = secretsEnv.REDIRECT_URI
-export const LOGIN_PROVIDER_URI = secretsEnv.LOGIN_PROVIDER_URI
-export const AUTH_URI = secretsEnv.AUTH_URI
-export const AUTH_SCOPE = secretsEnv.AUTH_SCOPE
-
-// Cache
-export const REDIS_HOST = secretsEnv.REDIS_HOST || '0.0.0.0'
-export const REDIS_PORT: string = secretsEnv.REDIS_PORT || '6379'
-export const REDIS_PASSWORD: string | undefined = secretsEnv.REDIS_PASSWORD || undefined
-export const REDIS_SSL: boolean = secretsEnv.REDIS_SSL === 'true'
-export const DISABLE_CACHE = secretsEnv.DISABLE_CACHE === 'true'
-export const HFP_SCHEMA = secretsEnv.HFP_SCHEMAHFP_SCHEMA || 'hfp'
 export const INSERT_CONCURRENCY = parseInt(secretsEnv.INSERT_CONCURRENCY || '100', 10)
+export const EVENT_BATCH_SIZE = parseInt(secretsEnv.EVENT_BATCH_SIZE || '1000', 10)

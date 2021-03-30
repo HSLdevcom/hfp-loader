@@ -6,8 +6,7 @@ import { createSpecificEventKey } from './hfpStorage'
 import parse from 'csv-parse'
 import { getCsvParseOptions } from '../utils/parseCsv'
 import { hfpColumns } from '../utils/hfpColumns'
-
-const BATCH_SIZE = 1000
+import { EVENT_BATCH_SIZE } from '../constants'
 
 export function insertHfpFromBlobStream({
   blobName,
@@ -42,7 +41,7 @@ export function insertHfpFromBlobStream({
       for (let tableName in eventsByTable) {
         let events = eventsByTable[tableName]
         let eventsLength = events.length
-        let shouldInsertBatch = flush ? eventsLength !== 0 : eventsLength >= BATCH_SIZE
+        let shouldInsertBatch = flush ? eventsLength !== 0 : eventsLength >= EVENT_BATCH_SIZE
 
         if (shouldInsertBatch) {
           insertPromise = insertPromise.then(() => onBatch(events, tableName))

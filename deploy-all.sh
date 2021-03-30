@@ -5,7 +5,7 @@ set -e
 
 ORG=${ORG:-hsl}
 
-for TAG in latest dev stage production; do
+for TAG in latest; do
   DOCKER_IMAGE="transitlogregistry.azurecr.io/${ORG}/hfp-loader:${TAG}"
 
   docker build -t "$DOCKER_IMAGE" .
