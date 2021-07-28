@@ -52,7 +52,7 @@ export enum EventGroup {
 }
 
 export const eventGroupTables = {
-  [EventGroup.StopEvent]: 'stopevent',
-  [EventGroup.OtherEvent]: 'otherevent',
-  [EventGroup.VehiclePosition]: 'vehicleposition',
+  [EventGroup.StopEvent]: 'stopevent_manually_loaded',
+  [EventGroup.OtherEvent]: 'otherevent_manually_loaded',
+  [EventGroup.VehiclePosition]: 'vehicleposition_manually_loaded',
 }
