@@ -1,6 +1,8 @@
+import { format } from "date-fns"
+
 import { getPool } from './pg'
 
-export async function getEvents(date: string, table: string): Promise<{ uuid?: string | null }[]> {
+export async function getEvents(minTst: Date, maxTst: Date, table: string): Promise<{ uuid?: string | null }[]> {
   let pool = getPool()
   // The HFP tables do not have primary keys, so we must filter out events that already
   // exist in the table. Fetch the existing events for the date to facilitate this.
@@ -10,9 +12,10 @@ export async function getEvents(date: string, table: string): Promise<{ uuid?: s
     `
       SELECT t.uuid
       FROM public."${table}" t
-      WHERE t.oday = $1
+      WHERE $1 <= t.tst AND $2 <= t.tst
     `,
-    [date]
+    //TODO: might need to consider timezones here
+    [format(minTst, "yyyy-MM-dd HH:mm:ss"), format(maxTst, "yyyy-MM-dd HH:mm:ss")]
   )
 
   return existingEvents?.rows || []
