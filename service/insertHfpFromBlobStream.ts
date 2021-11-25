@@ -11,6 +11,8 @@ import { EVENT_BATCH_SIZE } from '../constants'
 export function insertHfpFromBlobStream({
   blobName,
   table,
+  minTst,
+  maxTst,
   eventGroup,
   eventExists,
   eventStream,
@@ -18,6 +20,8 @@ export function insertHfpFromBlobStream({
 }: {
   blobName: string
   table: string
+  minTst: Date
+  maxTst: Date
   eventGroup: EventGroup
   eventExists: (eventKey: string) => boolean
   eventStream: NodeJS.ReadableStream
@@ -72,7 +76,7 @@ export function insertHfpFromBlobStream({
         let dataItem = transformHfpItem(data)
         let eventKey = createSpecificEventKey(dataItem)
 
-        if (eventKey && !eventExists(eventKey)) {
+        if (eventKey && !eventExists(eventKey) && dataItem.tst !== null && minTst <= dataItem.tst && dataItem.tst <= maxTst) {
           eventsByTable[tableName].push(dataItem)
           sendBatchIfFull(false)
         }
