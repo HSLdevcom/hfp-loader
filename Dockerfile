@@ -2,6 +2,7 @@ FROM node:14
 
 RUN apt-get update && \
   apt-get -y install git build-essential software-properties-common apt-transport-https ca-certificates && \
+  apt-get -y install zstd && \
   # Needs new versions from the Buster repo, otherwise the matcher won't work
   apt-add-repository 'deb http://ftp.us.debian.org/debian buster main contrib non-free' && \
   apt-get update && \
