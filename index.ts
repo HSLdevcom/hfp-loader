@@ -20,7 +20,7 @@ let maxTst
 let maxTstValid
 
 try {
-  maxTst = parse(process.argv[2], "yyyy-MM-dd'T'HH:mm:ss", new Date(0))
+  maxTst = parse(process.argv[3], "yyyy-MM-dd'T'HH:mm:ss", new Date(0))
   maxTstValid = isValid(maxTst)
 } catch (err) {
   maxTstValid = false
