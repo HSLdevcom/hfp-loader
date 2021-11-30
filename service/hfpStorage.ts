@@ -20,7 +20,7 @@ export async function getHfpBlobsByTstAndEventType(minTst: Date, maxTst: Date, e
   return Promise.all([
     queryBlobs(`@container='${hfpContainerName}' AND eventType = '${eventType}' AND max_tst <= '${maxTstFormatted}' AND min_tst >= '${minTstFormatted}'`),
     queryBlobs(`@container='${hfpContainerName}' AND eventType = '${eventType}' AND min_tst <= '${minTstFormatted}' AND max_tst >= '${minTstFormatted}'`),
-    queryBlobs(`@container='${hfpContainerName}' AND eventType = '${eventType}' AND max_tst <= '${maxTstFormatted}' AND min_tst >= '${maxTstFormatted}'`),
+    queryBlobs(`@container='${hfpContainerName}' AND eventType = '${eventType}' AND min_tst <= '${maxTstFormatted}' AND max_tst >= '${maxTstFormatted}'`),
   ]).then(blobLists => {
     const uniqueBlobs = new Set<string>()
     for (const blobList of blobLists) {
