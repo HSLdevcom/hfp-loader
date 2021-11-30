@@ -1,4 +1,4 @@
-export function getCsvParseOptions(columns, delimiter = ',', startFromLine = 1) {
+export function getCsvParseOptions(columns, delimiter = ',', startFromLine = 2) {
   return {
     delimiter,
     from_line: startFromLine,
