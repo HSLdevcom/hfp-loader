@@ -2,7 +2,7 @@ import { ZSTDDecompress } from "simple-zstd"
 
 import { getBlobDownloadStream, getContainer, queryBlobs } from '../utils/azureStorage'
 import { HFP_STORAGE_CONTAINER } from '../constants'
-import { format } from "date-fns"
+import { formatUTC } from "../utils/formatUTC"
 
 let hfpContainerName = HFP_STORAGE_CONTAINER
 
@@ -13,8 +13,8 @@ export function createSpecificEventKey(item: { uuid?: string | null }) {
 }
 
 export async function getHfpBlobsByTstAndEventType(minTst: Date, maxTst: Date, eventType: string) {
-  const minTstFormatted = format(minTst, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
-  const maxTstFormatted = format(maxTst, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+  const minTstFormatted = formatUTC(minTst, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+  const maxTstFormatted = formatUTC(maxTst, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
 
   //Azure API does not allow using OR so we need to do multiple queries and combine their results
   return Promise.all([

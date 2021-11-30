@@ -10,7 +10,7 @@ let minTst
 let minTstValid
 
 try {
-  minTst = parse(process.argv[2], "yyyy-MM-dd'T'HH:mm:ss", new Date(0))
+  minTst = parse(process.argv[2]+'Z', "yyyy-MM-dd'T'HH:mm:ssX", 0)
   minTstValid = isValid(minTst)
 } catch (err) {
   minTstValid = false
@@ -20,7 +20,7 @@ let maxTst
 let maxTstValid
 
 try {
-  maxTst = parse(process.argv[3], "yyyy-MM-dd'T'HH:mm:ss", new Date(0))
+  maxTst = parse(process.argv[3]+'Z', "yyyy-MM-dd'T'HH:mm:ssX", 0)
   maxTstValid = isValid(maxTst)
 } catch (err) {
   maxTstValid = false
