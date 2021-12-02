@@ -51,6 +51,12 @@ export enum EventGroup {
   VehiclePosition = 'vehiclePosition',
 }
 
+export const eventGroupToEventType = {
+  [EventGroup.StopEvent]: ['DUE', 'ARR', 'ARS', 'DEP', 'PDE', 'PAS', 'WAIT'],
+  [EventGroup.OtherEvent]: ['DOO', 'DOC', 'DA', 'DOUT', 'BA', 'BOUT', 'VJA', 'VJOUT'],
+  [EventGroup.VehiclePosition]: ['VP'],
+}
+
 export const eventGroupTables = {
   [EventGroup.StopEvent]: 'stopevent',
   [EventGroup.OtherEvent]: 'otherevent',

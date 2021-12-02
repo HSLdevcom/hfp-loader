@@ -7,10 +7,13 @@ import parse from 'csv-parse'
 import { getCsvParseOptions } from '../utils/parseCsv'
 import { hfpColumns } from '../utils/hfpColumns'
 import { EVENT_BATCH_SIZE } from '../constants'
+import { parseISO } from 'date-fns'
 
 export function insertHfpFromBlobStream({
   blobName,
   table,
+  minTst,
+  maxTst,
   eventGroup,
   eventExists,
   eventStream,
@@ -18,8 +21,10 @@ export function insertHfpFromBlobStream({
 }: {
   blobName: string
   table: string
+  minTst: Date
+  maxTst: Date
   eventGroup: EventGroup
-  eventExists: (eventKey: string) => boolean
+  eventExists: (eventKey: number) => boolean
   eventStream: NodeJS.ReadableStream
   onBatch: (events: HfpRow[], tableName: string) => Promise<void>
 }): Promise<string> {
@@ -72,7 +77,11 @@ export function insertHfpFromBlobStream({
         let dataItem = transformHfpItem(data)
         let eventKey = createSpecificEventKey(dataItem)
 
-        if (eventKey && !eventExists(eventKey)) {
+        //For some reason tst type is defined as Date when it actually is string -> ignore type checking
+        // @ts-ignore
+        const tstAsDate = dataItem.tst === null ? null : parseISO(dataItem.tst)
+
+        if (eventKey && !eventExists(eventKey) && tstAsDate != null && minTst.getTime() <= tstAsDate.getTime() && tstAsDate.getTime() <= maxTst.getTime()) {
           eventsByTable[tableName].push(dataItem)
           sendBatchIfFull(false)
         }

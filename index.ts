@@ -1,29 +1,40 @@
-import { isValid, parseISO } from 'date-fns'
+import { isValid, parse } from 'date-fns'
 import { hfpTask } from './service/hfpTask'
 
-if (process.argv.length === 2) {
-  console.error('Expected at least one argument!')
+if (process.argv.length === 3) {
+  console.error('Expected at least two argument!')
   process.exit(1)
 }
 
-let date = process.argv[2]
-let dateValid
+let minTst
+let minTstValid
 
 try {
-  dateValid = isValid(parseISO(date))
+  minTst = parse(process.argv[2]+'Z', "yyyy-MM-dd'T'HH:mm:ssX", 0)
+  minTstValid = isValid(minTst)
 } catch (err) {
-  dateValid = false
+  minTstValid = false
 }
 
-if (!dateValid) {
-  console.error('Invalid date.')
+let maxTst
+let maxTstValid
+
+try {
+  maxTst = parse(process.argv[3]+'Z', "yyyy-MM-dd'T'HH:mm:ssX", 0)
+  maxTstValid = isValid(maxTst)
+} catch (err) {
+  maxTstValid = false
+}
+
+if (!minTstValid || !maxTstValid) {
+  console.error('Invalid timestamps')
   process.exit(1)
 }
 
 let isDone = false
 
-console.log(`Loading events for ${date}`)
-hfpTask(date, () => (isDone = true)).then(() => console.log(`All events loaded for ${date}`))
+console.log(`Loading events for ${minTst} - ${maxTst}`)
+hfpTask(minTst, maxTst, () => (isDone = true)).then(() => console.log(`All events loaded for ${minTst} - ${maxTst}`))
 
 // Keep the process going until done. Otherwise it will quit if there are no events to insert for a blob.
 // This is a Node limitation.

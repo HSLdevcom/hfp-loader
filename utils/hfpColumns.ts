@@ -42,5 +42,4 @@ export const hfpColumns = [
   'uuid',
   'veh',
   'vehicle_number',
-  'version',
 ]

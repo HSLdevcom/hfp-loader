@@ -35,6 +35,17 @@ export async function listBlobs(containerClient: ContainerClient, prefix: string
   return blobs
 }
 
+export async function queryBlobs(query: string) {
+  const storageClient = createStorageClient()
+  
+  let blobs: string[] = []
+  for await (const blob of storageClient.findBlobsByTags(query)) {
+    blobs.push(blob.name)
+  }
+
+  return blobs
+}
+
 export async function getBlobDownloadStream(containerClient, blobName) {
   let blockBlobClient = getBlockBlobClient(containerClient, blobName)
   const snapshotResponse = await blockBlobClient.createSnapshot()
