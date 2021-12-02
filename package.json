@@ -1,7 +1,7 @@
 {
   "scripts": {
-    "start": "node --max-old-space-size=16000 --inspect=9201 -r ts-node/register -r dotenv/config index.ts",
-    "start:production": "node --max-old-space-size=16000 -r dotenv/config dist/index.js",
+    "start": "node --max-old-space-size=24576 --inspect=9201 -r ts-node/register -r dotenv/config index.ts",
+    "start:production": "node --max-old-space-size=24576 -r dotenv/config dist/index.js",
     "build": "tsc",
     "postinstall": "patch-package"
   },
