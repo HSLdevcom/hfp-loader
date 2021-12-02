@@ -13,6 +13,7 @@
     "date-fns-tz": "^1.1.6",
     "dotenv": "^8.2.0",
     "lodash": "^4.17.20",
+    "murmurhash": "^2.0.0",
     "p-queue": "^6.6.2",
     "patch-package": "^6.4.7",
     "pg": "8.5.1",
