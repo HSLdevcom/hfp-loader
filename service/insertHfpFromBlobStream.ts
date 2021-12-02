@@ -24,7 +24,7 @@ export function insertHfpFromBlobStream({
   minTst: Date
   maxTst: Date
   eventGroup: EventGroup
-  eventExists: (eventKey: string) => boolean
+  eventExists: (eventKey: number) => boolean
   eventStream: NodeJS.ReadableStream
   onBatch: (events: HfpRow[], tableName: string) => Promise<void>
 }): Promise<string> {

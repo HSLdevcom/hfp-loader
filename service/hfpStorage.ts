@@ -3,13 +3,14 @@ import { ZSTDDecompress } from "simple-zstd"
 import { getBlobDownloadStream, getContainer, queryBlobs } from '../utils/azureStorage'
 import { HFP_STORAGE_CONTAINER } from '../constants'
 import { formatUTC } from "../utils/formatUTC"
+import { hash } from "../utils/murmur"
 
 let hfpContainerName = HFP_STORAGE_CONTAINER
 
-// Events are identified by the UUID. This is used for deduplication, so the HFP loader
-// can be run on top of a day that already has events and it won't insert duplicates.
-export function createSpecificEventKey(item: { uuid?: string | null }) {
-  return item.uuid || ''
+// Calculate hash code from unique vehicle ID, timestamp and event type to avoid inserting duplicates to the database.
+// UUID cannot be used for this because they are randomly generated.
+export function createSpecificEventKey(item: { unique_vehicle_id: string | null, tsi: string | null, event_type: string | null }) {
+  return hash(item.unique_vehicle_id + "_" + item.tsi + "_" + item.event_type)
 }
 
 export async function getHfpBlobsByTstAndEventType(minTst: Date, maxTst: Date, eventType: string) {

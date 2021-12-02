@@ -97,14 +97,14 @@ export async function hfpTask(minTst: Date, maxTst: Date, onDone: () => unknown)
     }
 
     let existingUuidChunks = chunk(compact(existingEvents.map(createSpecificEventKey)), 1000000)
-    let existingEventUuids: Set<string>[] = []
+    let existingEventUuids: Set<number>[] = []
 
     for (let uuidChunk of existingUuidChunks) {
       let set = new Set(uuidChunk)
       existingEventUuids.push(set)
     }
 
-    function eventExists(eventId: string) {
+    function eventExists(eventId: number) {
       return existingEventUuids.some((set) => set.has(eventId))
     }
 
